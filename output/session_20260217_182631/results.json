@@ -1,0 +1,388 @@
+{
+  "initial_score": 0.0,
+  "final_score": 0.0,
+  "improvement": 0.0,
+  "iterations": 2,
+  "converged": false,
+  "final_prompt": "Default prompt",
+  "performance_history": [
+    0.0,
+    0.0
+  ],
+  "raw_results": {
+    "iterations": [
+      {
+        "generation_results": [
+          {
+            "question": "What is the TOdays Date and Why this earth exist",
+            "answer": "",
+            "explanation": "Generation failed: No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "confidence": 0.0,
+            "error": "No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "metadata": {
+              "latency_ms": 689.13,
+              "timestamp": "2026-02-17T18:27:15.423376",
+              "status": "error"
+            }
+          },
+          {
+            "question": "i want scintific ans",
+            "answer": "",
+            "explanation": "Generation failed: No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "confidence": 0.0,
+            "error": "No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "metadata": {
+              "latency_ms": 9.96,
+              "timestamp": "2026-02-17T18:27:15.433339",
+              "status": "error"
+            }
+          }
+        ],
+        "evaluation_results": [
+          {
+            "scores": {
+              "correctness": 0.0,
+              "clarity": 0.0,
+              "reasoning": 0.0,
+              "relevance": 0.0,
+              "conciseness": 0.0
+            },
+            "composite_score": 0.0,
+            "feedback": {
+              "error": "Evaluation failed: No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`"
+            },
+            "suggestions": [],
+            "flags": [
+              "evaluation_error"
+            ],
+            "error": "No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "metadata": {
+              "latency_ms": 14.43,
+              "timestamp": "2026-02-17T18:27:15.447765",
+              "status": "error"
+            }
+          },
+          {
+            "scores": {
+              "correctness": 0.0,
+              "clarity": 0.0,
+              "reasoning": 0.0,
+              "relevance": 0.0,
+              "conciseness": 0.0
+            },
+            "composite_score": 0.0,
+            "feedback": {
+              "error": "Evaluation failed: No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`"
+            },
+            "suggestions": [],
+            "flags": [
+              "evaluation_error"
+            ],
+            "error": "No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "metadata": {
+              "latency_ms": 5.11,
+              "timestamp": "2026-02-17T18:27:15.452877",
+              "status": "error"
+            }
+          }
+        ],
+        "metrics": {
+          "scores_stats": {
+            "correctness": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            },
+            "clarity": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            },
+            "reasoning": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            },
+            "relevance": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            },
+            "conciseness": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            }
+          },
+          "composite_stats": {
+            "mean": 0.0,
+            "median": 0.0,
+            "std": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "count": 2
+          },
+          "flags_summary": {
+            "evaluation_error": 2
+          },
+          "suggestions_summary": {},
+          "iteration": 1,
+          "timestamp": "2026-02-17T18:27:15.452877",
+          "num_evaluations": 2,
+          "prompt": "Default prompt",
+          "prompt_length": 14
+        },
+        "iteration": 1,
+        "runtime": 0.72
+      },
+      {
+        "generation_results": [
+          {
+            "question": "What is the TOdays Date and Why this earth exist",
+            "answer": "",
+            "explanation": "Generation failed: No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "confidence": 0.0,
+            "error": "No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "metadata": {
+              "latency_ms": 10.07,
+              "timestamp": "2026-02-17T18:27:15.462943",
+              "status": "error"
+            }
+          },
+          {
+            "question": "i want scintific ans",
+            "answer": "",
+            "explanation": "Generation failed: No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "confidence": 0.0,
+            "error": "No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "metadata": {
+              "latency_ms": 0.15,
+              "timestamp": "2026-02-17T18:27:15.463095",
+              "status": "error"
+            }
+          }
+        ],
+        "evaluation_results": [
+          {
+            "scores": {
+              "correctness": 0.0,
+              "clarity": 0.0,
+              "reasoning": 0.0,
+              "relevance": 0.0,
+              "conciseness": 0.0
+            },
+            "composite_score": 0.0,
+            "feedback": {
+              "error": "Evaluation failed: No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`"
+            },
+            "suggestions": [],
+            "flags": [
+              "evaluation_error"
+            ],
+            "error": "No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "metadata": {
+              "latency_ms": 10.53,
+              "timestamp": "2026-02-17T18:27:15.482788",
+              "status": "error"
+            }
+          },
+          {
+            "scores": {
+              "correctness": 0.0,
+              "clarity": 0.0,
+              "reasoning": 0.0,
+              "relevance": 0.0,
+              "conciseness": 0.0
+            },
+            "composite_score": 0.0,
+            "feedback": {
+              "error": "Evaluation failed: No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`"
+            },
+            "suggestions": [],
+            "flags": [
+              "evaluation_error"
+            ],
+            "error": "No LM is loaded. Please configure the LM using `dspy.configure(lm=dspy.LM(...))`. e.g, `dspy.configure(lm=dspy.LM('openai/gpt-4o-mini'))`",
+            "metadata": {
+              "latency_ms": 5.41,
+              "timestamp": "2026-02-17T18:27:15.488314",
+              "status": "error"
+            }
+          }
+        ],
+        "metrics": {
+          "scores_stats": {
+            "correctness": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            },
+            "clarity": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            },
+            "reasoning": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            },
+            "relevance": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            },
+            "conciseness": {
+              "mean": 0.0,
+              "median": 0.0,
+              "std": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "count": 2
+            }
+          },
+          "composite_stats": {
+            "mean": 0.0,
+            "median": 0.0,
+            "std": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "count": 2
+          },
+          "flags_summary": {
+            "evaluation_error": 2
+          },
+          "suggestions_summary": {},
+          "iteration": 2,
+          "timestamp": "2026-02-17T18:27:15.492878",
+          "num_evaluations": 2,
+          "prompt": "Default prompt",
+          "prompt_length": 14
+        },
+        "iteration": 2,
+        "runtime": 0.04
+      }
+    ],
+    "final_metrics": {
+      "scores_stats": {
+        "correctness": {
+          "mean": 0.0,
+          "median": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "count": 2
+        },
+        "clarity": {
+          "mean": 0.0,
+          "median": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "count": 2
+        },
+        "reasoning": {
+          "mean": 0.0,
+          "median": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "count": 2
+        },
+        "relevance": {
+          "mean": 0.0,
+          "median": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "count": 2
+        },
+        "conciseness": {
+          "mean": 0.0,
+          "median": 0.0,
+          "std": 0.0,
+          "min": 0.0,
+          "max": 0.0,
+          "count": 2
+        }
+      },
+      "composite_stats": {
+        "mean": 0.0,
+        "median": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "count": 2
+      },
+      "flags_summary": {
+        "evaluation_error": 2
+      },
+      "suggestions_summary": {},
+      "iteration": 2,
+      "timestamp": "2026-02-17T18:27:15.492878",
+      "num_evaluations": 2,
+      "prompt": "Default prompt",
+      "prompt_length": 14
+    },
+    "summary": {
+      "total_iterations": 2,
+      "best_iteration": {
+        "number": 1,
+        "score": 0.0
+      },
+      "score_range": {
+        "min": 0.0,
+        "max": 0.0,
+        "improvement": 0.0
+      },
+      "trend": {
+        "trend": "stable",
+        "slope": 0.0,
+        "total_change": 0.0,
+        "iterations": 2,
+        "first_score": 0.0,
+        "last_score": 0.0
+      },
+      "convergence": {
+        "converged": false,
+        "reason": "still_improving",
+        "current_score": 0.0
+      },
+      "top_issues": {
+        "evaluation_error": 2
+      },
+      "current_iteration": 2
+    },
+    "converged": false,
+    "total_iterations": 2,
+    "total_runtime": 0.77,
+    "questions_processed": 2
+  }
+}

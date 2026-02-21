@@ -1,0 +1,88 @@
+# Astra-AI Configuration File
+# This file contains default settings - override with environment variables
+
+models:
+  # Generator model configuration
+  generator:
+    provider: "huggingface"  # Options: ollama, huggingface, vllm
+    model_name: "meta-llama/Meta-Llama-3-8B-Instruct"  # WORKING model!
+    temperature: 0.7
+    max_tokens: 500
+    top_p: 0.9
+    
+  # Judge model configuration  
+  judge:
+    provider: "huggingface"
+    model_name: "mistralai/Mistral-7B-Instruct-v0.2"  # WORKING model!
+    temperature: 0.3  # Lower temperature for consistent evaluation
+    max_tokens: 1500
+    top_p: 0.9
+
+  # Optimizer model (if using LLM-based optimization)
+  optimizer:
+    provider: "huggingface"
+    model_name: "meta-llama/Meta-Llama-3-8B-Instruct"  # Same as generator - WORKING!
+    temperature: 0.5
+    max_tokens: 2000
+    top_p: 0.9
+
+# DSPy configuration
+dspy:
+  cache_dir: "./cache/dspy"
+  enable_cache: true
+  teleprompter: "BootstrapFewShot"  # Options: BootstrapFewShot, MIPRO
+  max_bootstrapped_demos: 4
+  max_labeled_demos: 8
+
+# Optimization parameters
+optimization:
+  max_iterations: 10
+  convergence_threshold: 8.5
+  min_improvement_rate: 0.02
+  early_stopping: true
+  patience: 3
+
+# Evaluation criteria weights (must sum to 1.0)
+evaluation:
+  weights:
+    correctness: 0.40
+    clarity: 0.20
+    reasoning: 0.20
+    relevance: 0.10
+    conciseness: 0.10
+  
+  scoring:
+    scale_min: 0
+    scale_max: 10
+    pass_threshold: 7.0
+
+# Data settings
+data:
+  data_dir: "./data"
+  results_dir: "./results"
+  sample_questions: "./data/sample_questions.json"
+  train_test_split: 0.8
+
+# Logging configuration
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  log_dir: "./logs"
+  console_output: true
+  file_output: true
+  max_log_size_mb: 10
+  backup_count: 5
+
+# Performance settings
+performance:
+  batch_size: 5
+  parallel_processing: false
+  request_timeout: 120  # seconds
+  retry_attempts: 3
+  retry_delay: 2  # seconds
+
+# Cost tracking
+cost:
+  track_costs: true
+  token_counting: true
+  export_costs: true
+  cost_limit_per_run: null  # Set to number to limit costs

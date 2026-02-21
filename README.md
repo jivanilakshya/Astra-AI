@@ -4,26 +4,30 @@
 
 ## 🚀 Overview
 
-The core problem Astra-AI solves is the manual bottleneck of prompt engineering. Instead of manual trial-and-error, Astra-AI uses an **LLM-as-Judge** framework to evaluate outputs and an **Optimizer Agent** to iteratively refine prompts until they reach peak performance.
+The core problem Astra-AI solves is the manual bottleneck of prompt engineering. Instead of manual trial-and-error, Astra-AI leverages the **DSPy framework** for automatic prompt generation and optimization, combined with an **LLM-as-Judge** framework to evaluate outputs across multiple quality dimensions. This creates a fully autonomous system that iteratively refines prompts until they reach peak performance.
 
 ### Key Features
-- **Closed Feedback Loop**: Autonomous iteration: Generator → Judge → Optimizer → Generator.
+- **DSPy-Powered Prompt Generation**: Automatic prompt generation and optimization using DSPy's Signatures, Modules, and Teleprompters.
+- **Closed Feedback Loop**: Autonomous iteration: DSPy Generator → Judge → Optimizer → DSPy Compilation.
 - **Multi-Dimensional Evaluation**: Scores outputs on Correctness, Clarity, Reasoning, Relevance, and Conciseness.
-- **Automated Prompt Optimization**: Uses LLM reasoning to identify weaknesses and systematically improve prompt templates.
+- **Intelligent Optimization**: Combines DSPy's metric-based optimization with custom LLM-driven refinement strategies.
 - **Multi-Model Support**: Seamlessly integrate OpenAI (GPT-4/3.5) and Anthropic (Claude 3.5 Sonnet/Opus/Haiku).
+- **Cost Optimization**: Automatic model selection and cost-effective inference strategies.
 - **Comprehensive Monitoring**: Real-time progress tracking via CLI and a Streamlit-based Web Dashboard.
 
 ---
 
 ## 🏗️ Architecture
 
-Astra-AI is built on a modular, agent-based architecture consisting of five core agents:
+Astra-AI is built on a modular, agent-based architecture with **DSPy framework** at its core, consisting of five core agents:
 
-1.  **Orchestrator Agent**: Coordinates the entire workflow, manages iterations, and enforces stopping criteria.
-2.  **Generator Agent**: Produces answers and explanations based on the current prompt template.
-3.  **Judge Agent**: Evaluates generated outputs across five quality dimensions using a structured scoring system.
-4.  **Optimizer Agent**: Analyzes judge feedback and scores to generate improved prompt versions.
-5.  **Analytics Agent**: Logs all interactions, tracks performance metrics, and provides optimization insights.
+1.  **DSPy Generator Module**: Automatically generates optimized prompts using DSPy Signatures and Teleprompters (BootstrapFewShot, MIPRO).
+2.  **Judge Agent**: Evaluates generated outputs across five quality dimensions using a structured scoring system powered by LLM-as-Judge.
+3.  **Optimizer Agent**: Analyzes judge feedback and scores, then triggers DSPy compilation to generate improved prompt versions.
+4.  **Orchestrator Agent**: Coordinates the entire workflow, manages DSPy optimization cycles, and enforces stopping criteria.
+5.  **Analytics Agent**: Logs all interactions, tracks performance metrics, monitors cost optimization, and provides insights.
+
+**DSPy Integration**: The system uses DSPy's automatic prompt optimization instead of manual prompt engineering, with custom evaluation metrics from the Judge Agent guiding the optimization process.
 
 For more details, see [./Agents.md](./Agents.md).
 
@@ -43,10 +47,12 @@ The system evaluates responses on a 1-10 scale across several criteria:
 
 ## 🤖 LLM Integration
 
-Astra-AI supports multiple LLM providers:
+Astra-AI supports multiple LLM providers through DSPy's unified interface:
 
-- **OpenAI**: Default integration for all agents.
-- **Anthropic (Claude)**: Optimized for strong reasoning, constitutional AI alignment, and long context windows.
+- **DSPy Framework**: Core framework for automatic prompt generation, compilation, and optimization.
+- **OpenAI**: Default integration (GPT-4, GPT-3.5-turbo) for DSPy modules and evaluation agents.
+- **Anthropic (Claude)**: Optimized for strong reasoning, constitutional AI alignment, and long context windows (Claude 3.5 Sonnet/Opus/Haiku).
+- **Cost Optimization**: Automatic model selection based on task complexity, cost constraints, and performance requirements.
 
 Detailed integration instructions can be found in [./Claude.md](./Claude.md).
 
@@ -63,10 +69,11 @@ Refer to [./UIDesign.md](./UIDesign.md) for more information on the user interfa
 
 ## 📂 Project Structure
 
-- [./Agents.md](./Agents.md): Detailed documentation of the agent architecture.
+- [./Agents.md](./Agents.md): Detailed documentation of the agent architecture and DSPy integration.
 - [./Claude.md](./Claude.md): Guide for integrating Anthropic's Claude models.
 - [./RPI.md](./RPI.md): Research Problem Identification and project goals.
 - [./UIDesign.md](./UIDesign.md): Documentation for the CLI and Web Dashboard.
+- DSPy.md (coming soon): Comprehensive guide to DSPy integration and automatic prompt optimization.
 
 ---
 
@@ -75,7 +82,7 @@ Refer to [./UIDesign.md](./UIDesign.md) for more information on the user interfa
 ### Installation
 
 ```bash
-pip install openai anthropic streamlit rich plotly pandas
+pip install dspy-ai openai anthropic streamlit rich plotly pandas
 ```
 
 ### Basic Usage
@@ -91,5 +98,6 @@ python main.py optimize --questions data/questions.json --initial-prompt prompts
 
 ## 🔬 Research Context
 
-This project aims to answer whether a closed-loop system can effectively replace manual prompt engineering while maintaining high reliability and performance stability. See [./RPI.md](./RPI.md) for the full research statement and objectives.
- 5285
+This project aims to answer whether a DSPy-powered closed-loop system can effectively replace manual prompt engineering while maintaining high reliability and performance stability. By combining DSPy's automatic optimization with multi-dimensional LLM-as-Judge evaluation, we explore the frontier of fully autonomous prompt engineering with cost optimization and model selection.
+
+See [./RPI.md](./RPI.md) for the full research statement and objectives.

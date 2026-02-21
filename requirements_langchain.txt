@@ -1,0 +1,19 @@
+# LangChain Migration - Additional Dependencies
+
+# Core LangChain
+langchain>=0.1.0
+langchain-core>=0.1.0
+langchain-community>=0.0.20
+
+# HuggingFace integration for LangChain
+langchain-huggingface>=0.0.1
+
+# LangGraph for workflow orchestration
+langgraph>=0.0.20
+
+# LangSmith for observability
+langsmith>=0.0.77
+
+# Already installed (existing dependencies)
+# huggingface-hub
+# python-dotenv

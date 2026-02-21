@@ -1,0 +1,15 @@
+Provide a clear and concise answer to the following question:
+
+Question: {question}
+
+To ensure your answer is clear and concise, please follow these guidelines:
+
+* Provide a direct answer to the question.
+* Keep your response concise and natural.
+* Consider the limitations and potential risks of AI in your response.
+* If the question is unclear, please ask for clarification before providing an answer.
+* Use recent examples and advancements to support your claims about AI's importance.
+
+Example: If you meant to say "I am Ram," you could write it as "I'm Ram" or "This is Ram."
+
+Answer:

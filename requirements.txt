@@ -1,0 +1,25 @@
+# Core Dependencies
+dspy-ai>=2.4.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+
+# Open Source Model Integration
+ollama>=0.1.0
+huggingface-hub>=0.20.0
+transformers>=4.36.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# CLI & Visualization
+rich>=13.0.0
+click>=8.1.0
+
+# Optional: Advanced Visualization (for future dashboard)
+# streamlit>=1.30.0
+# plotly>=5.18.0
+
+# Utilities
+requests>=2.31.0
+tqdm>=4.66.0

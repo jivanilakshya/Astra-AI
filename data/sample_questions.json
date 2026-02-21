@@ -1,0 +1,74 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "question": "What is photosynthesis?",
+      "ground_truth": "Photosynthesis is the process by which green plants and some other organisms use sunlight to synthesize foods with the help of chlorophyll, converting carbon dioxide and water into glucose and oxygen.",
+      "category": "biology",
+      "difficulty": "easy"
+    },
+    {
+      "id": 2,
+      "question": "Explain Newton's first law of motion.",
+      "ground_truth": "Newton's first law of motion states that an object at rest stays at rest and an object in motion stays in motion with the same speed and in the same direction unless acted upon by an unbalanced force.",
+      "category": "physics",
+      "difficulty": "easy"
+    },
+    {
+      "id": 3,
+      "question": "Why is the sky blue?",
+      "ground_truth": "The sky appears blue because molecules in the air scatter blue light from the sun more than they scatter red light. This phenomenon is called Rayleigh scattering.",
+      "category": "physics",
+      "difficulty": "medium"
+    },
+    {
+      "id": 4,
+      "question": "What is the difference between DNA and RNA?",
+      "ground_truth": "DNA (Deoxyribonucleic Acid) is double-stranded and contains deoxyribose sugar, while RNA (Ribonucleic Acid) is single-stranded and contains ribose sugar. DNA uses thymine, while RNA uses uracil. DNA stores genetic information, while RNA helps in protein synthesis.",
+      "category": "biology",
+      "difficulty": "medium"
+    },
+    {
+      "id": 5,
+      "question": "What causes seasons on Earth?",
+      "ground_truth": "Seasons are caused by Earth's tilted axis (23.5 degrees) as it orbits the Sun. When a hemisphere is tilted toward the Sun, it experiences summer due to more direct sunlight and longer days. When tilted away, it experiences winter.",
+      "category": "earth_science",
+      "difficulty": "medium"
+    },
+    {
+      "id": 6,
+      "question": "Explain the concept of supply and demand.",
+      "ground_truth": "Supply and demand is an economic model that determines the price of goods in a market. Supply refers to how much of a product is available, while demand refers to how much consumers want it. When demand exceeds supply, prices rise. When supply exceeds demand, prices fall.",
+      "category": "economics",
+      "difficulty": "medium"
+    },
+    {
+      "id": 7,
+      "question": "What is machine learning?",
+      "ground_truth": "Machine learning is a subset of artificial intelligence that enables computers to learn and improve from experience without being explicitly programmed. It uses algorithms to identify patterns in data and make predictions or decisions.",
+      "category": "computer_science",
+      "difficulty": "medium"
+    },
+    {
+      "id": 8,
+      "question": "How does a black hole form?",
+      "ground_truth": "A black hole forms when a massive star (at least 20-25 times the mass of our Sun) exhausts its nuclear fuel and collapses under its own gravity. The core collapses so densely that not even light can escape its gravitational pull.",
+      "category": "astronomy",
+      "difficulty": "hard"
+    },
+    {
+      "id": 9,
+      "question": "What is quantum entanglement?",
+      "ground_truth": "Quantum entanglement is a phenomenon where two or more particles become connected in such a way that the quantum state of one particle instantaneously affects the state of the other, regardless of the distance between them. This correlation persists even at vast distances.",
+      "category": "physics",
+      "difficulty": "hard"
+    },
+    {
+      "id": 10,
+      "question": "Explain the water cycle.",
+      "ground_truth": "The water cycle is the continuous movement of water on, above, and below Earth's surface. It includes evaporation (water turning to vapor), condensation (vapor forming clouds), precipitation (rain/snow falling), and collection (water gathering in rivers, lakes, oceans).",
+      "category": "earth_science",
+      "difficulty": "easy"
+    }
+  ]
+}
