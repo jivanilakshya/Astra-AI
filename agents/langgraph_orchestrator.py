@@ -5,9 +5,10 @@ Uses LangGraph for optimization loop management + LangSmith observability
 
 import os
 import json
+import time
 from typing import Dict, List, Optional, Any, TypedDict, Annotated
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
 # LangGraph imports
 try:
@@ -19,9 +20,14 @@ except ImportError:
 # LangSmith (optional)
 try:
     from langsmith import Client as LangSmithClient
+    from langsmith import traceable as _ls_traceable
     langsmith_available = True
 except ImportError:
     langsmith_available = False
+    def _ls_traceable(*a, **kw):
+        def _dec(fn): return fn
+        if a and callable(a[0]): return a[0]
+        return _dec
 
 # Local imports
 from agents.huggingface_provider import HuggingFaceProvider
@@ -69,6 +75,11 @@ class IterationLog:
     evaluations: List[Dict]
     generated_outputs: List[Dict]
     timestamp: str
+    per_question_scores: List[Dict] = field(default_factory=list)
+    weak_criteria: List[str] = field(default_factory=list)
+    strong_criteria: List[str] = field(default_factory=list)
+    optimization_modifications: List[str] = field(default_factory=list)
+    duration_seconds: float = 0.0
 
 
 class LangGraphOrchestrator:
@@ -96,17 +107,17 @@ class LangGraphOrchestrator:
         self.convergence_threshold = convergence_threshold
         self.iteration_logs: List[IterationLog] = []
         
-        # Initialize LangSmith
+        # LangSmith - check .env setting
+        tracing_enabled = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
         self.langsmith_enabled = False
-        if enable_langsmith and langsmith_available:
+        if enable_langsmith and langsmith_available and tracing_enabled:
             try:
-                os.environ["LANGCHAIN_TRACING_V2"] = "true"
-                os.environ["LANGCHAIN_PROJECT"] = "astra-ai-orchestrator"
+                os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT", "astra-ai")
                 self.langsmith_client = LangSmithClient()
                 self.langsmith_enabled = True
-                print("  LangSmith tracing enabled for Orchestrator")
-            except Exception:
-                pass
+                print("  LangSmith tracing: ACTIVE")
+            except Exception as e:
+                print(f"  LangSmith tracing: FAILED ({e})")
         
         # Initialize agents
         print("\n  Initializing agents...")
@@ -120,13 +131,13 @@ class LangGraphOrchestrator:
         # Judge (LangChain)
         self.judge = create_langchain_judge(
             model_name=judge_model,
-            enable_langsmith=enable_langsmith
+            enable_langsmith=enable_langsmith and tracing_enabled
         )
         
         # Optimizer (LangChain)
         self.optimizer = create_langchain_optimizer(
             model_name=optimizer_model,
-            enable_langsmith=enable_langsmith
+            enable_langsmith=enable_langsmith and tracing_enabled
         )
         
         # Build LangGraph workflow
@@ -171,7 +182,10 @@ class LangGraphOrchestrator:
     
     def _generate_node(self, state: OptimizationState) -> OptimizationState:
         """Generate answers using current prompt"""
-        print(f"\n  Iteration {state['iteration'] + 1}: Generating answers...")
+        elapsed = time.time() - getattr(self, '_loop_start_time', time.time())
+        iter_num = state['iteration'] + 1
+        max_iter = state['max_iterations']
+        print(f"\n  Iteration {iter_num}/{max_iter}: Generating answers... [{elapsed:.0f}s elapsed]")
         
         generated_outputs = []
         
@@ -215,43 +229,131 @@ class LangGraphOrchestrator:
         return state
     
     def _evaluate_node(self, state: OptimizationState) -> OptimizationState:
-        """Evaluate generated answers"""
-        print(f"\n  Evaluating {len(state['generated_outputs'])} answers...")
+        """Evaluate generated answers with detailed per-question tracking"""
+        num_outputs = len(state['generated_outputs'])
+        print(f"\n  Evaluating {num_outputs} answers...")
         
         evaluations = []
         
         for i, output in enumerate(state["generated_outputs"]):
             try:
+                # Skip error outputs
+                if output.get("metadata", {}).get("status") == "error" or not output.get("answer"):
+                    print(f"    [SKIP] Question {i+1}: empty answer")
+                    evaluations.append({
+                        "scores": {k: 0.0 for k in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]},
+                        "composite_score": 0.0,
+                        "feedback": {},
+                        "suggestions": ["Answer was empty or failed to generate"],
+                        "flags": ["empty_answer"],
+                        "skipped": True
+                    })
+                    continue
+                
                 eval_result = self.judge.evaluate(
                     question=output["question"],
                     answer=output.get("answer", ""),
                     explanation=output.get("explanation", "")
                 )
                 evaluations.append(eval_result)
-                print(f"    [OK] Evaluated {i+1}/{len(state['generated_outputs'])}: {eval_result['composite_score']:.2f}/10")
+                
+                score = eval_result['composite_score']
+                grade = "A" if score >= 8 else "B" if score >= 6 else "C" if score >= 4 else "D"
+                print(f"    [OK] Q{i+1}: {score:.1f}/10 ({grade})  {output['question'][:45]}...")
+                
+                # Submit feedback to LangSmith if available
+                self._submit_langsmith_feedback(output, eval_result, state['iteration'] + 1)
+                
             except Exception as e:
-                print(f"    [ERROR] Evaluation error: {e}")
+                print(f"    [ERROR] Evaluation error Q{i+1}: {e}")
                 evaluations.append({
                     "scores": {k: 0.0 for k in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]},
                     "composite_score": 0.0,
-                    "error": str(e)
+                    "error": str(e),
+                    "flags": ["evaluation_error"]
                 })
         
-        # Calculate average score
-        avg_score = sum(e["composite_score"] for e in evaluations) / len(evaluations) if evaluations else 0.0
+        # Calculate average (only for non-skipped, non-error evaluations)
+        valid_evals = [e for e in evaluations if e["composite_score"] > 0 and not e.get("skipped")]
+        avg_score = sum(e["composite_score"] for e in valid_evals) / len(valid_evals) if valid_evals else 0.0
+        
+        # Per-criteria averages
+        criteria_avgs = {}
+        for criterion in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]:
+            vals = [e["scores"].get(criterion, 0) for e in valid_evals]
+            criteria_avgs[criterion] = sum(vals) / len(vals) if vals else 0.0
+        
+        # Identify weak/strong criteria
+        weak = [c for c, v in criteria_avgs.items() if v < 6.0]
+        strong = [c for c, v in criteria_avgs.items() if v >= 8.0]
         
         state["evaluations"] = evaluations
         state["current_score"] = avg_score
         state["performance_history"].append(avg_score)
         
-        print(f"    Average score: {avg_score:.2f}/10")
+        # Print criteria summary
+        print(f"\n    {'─' * 50}")
+        print(f"    {'Criterion':<15s} {'Avg Score':>10s}  {'Grade':>6s}")
+        print(f"    {'─' * 50}")
+        for criterion, avg in criteria_avgs.items():
+            grade = "A" if avg >= 8 else "B" if avg >= 6 else "C" if avg >= 4 else "D"
+            icon = "✓" if avg >= 7 else "!" if avg >= 4 else "✗"
+            print(f"    {criterion:<15s} {avg:>8.1f}/10  {icon:>4s} {grade}")
+        print(f"    {'─' * 50}")
+        print(f"    {'COMPOSITE':<15s} {avg_score:>8.1f}/10")
+        if weak:
+            print(f"    Needs work: {', '.join(weak)}")
         
         return state
     
+    def _submit_langsmith_feedback(self, output: Dict, eval_result: Dict, iteration: int):
+        """Submit evaluation scores as feedback to LangSmith"""
+        if not self.langsmith_enabled:
+            return
+        try:
+            from langsmith import utils as ls_utils
+            # Use the LangSmith client to log a dataset-style feedback
+            project_name = os.getenv("LANGCHAIN_PROJECT", "astra-ai")
+            
+            # List recent runs and attach feedback to the latest
+            runs = list(self.langsmith_client.list_runs(
+                project_name=project_name,
+                execution_order=1,
+                limit=1
+            ))
+            
+            if runs:
+                run_id = runs[0].id
+                # Submit composite score
+                self.langsmith_client.create_feedback(
+                    run_id=run_id,
+                    key="composite_score",
+                    score=eval_result["composite_score"] / 10.0,
+                    value=f"Iter {iteration}: {eval_result['composite_score']:.1f}/10",
+                    comment=json.dumps({
+                        "scores": eval_result.get("scores", {}),
+                        "question": output.get("question", "")[:100],
+                        "suggestions": eval_result.get("suggestions", [])[:2]
+                    })
+                )
+                # Submit individual criteria
+                for criterion, score_val in eval_result.get("scores", {}).items():
+                    self.langsmith_client.create_feedback(
+                        run_id=run_id,
+                        key=f"eval_{criterion}",
+                        score=score_val / 10.0,
+                        value=f"{score_val:.1f}/10"
+                    )
+        except Exception as e:
+            # Silently skip — don't break evaluation for feedback issues
+            pass
+    
     def _optimize_node(self, state: OptimizationState) -> OptimizationState:
-        """Optimize prompt based on evaluations"""
+        """Optimize prompt based on evaluations with detailed tracking"""
+        iter_start = time.time()
         print(f"\n  Optimizing prompt...")
         
+        modifications = []
         try:
             optimization_result = self.optimizer.optimize(
                 current_prompt=state["current_prompt"],
@@ -262,21 +364,56 @@ class LangGraphOrchestrator:
             # Update prompt
             state["current_prompt"] = optimization_result["optimized_prompt"]
             state["optimization_result"] = optimization_result
+            modifications = optimization_result.get("modifications_made", [])
             
-            print(f"    [OK] Prompt optimized ({len(optimization_result.get('modifications_made', []))} modifications)")
+            if modifications:
+                print(f"    [OK] Prompt optimized ({len(modifications)} changes):")
+                for mod in modifications[:3]:
+                    print(f"        • {mod[:70]}")
+            else:
+                print(f"    [OK] Prompt optimized")
             
         except Exception as e:
             print(f"    [ERROR] Optimization error: {e}")
             state["optimization_result"] = {"error": str(e)}
         
-        # Log iteration
+        # Build per-question score details
+        per_q_scores = []
+        valid_evals = [e for e in state["evaluations"] if e.get("composite_score", 0) > 0 and not e.get("skipped")]
+        for i, (output, eval_r) in enumerate(zip(state["generated_outputs"], state["evaluations"])):
+            per_q_scores.append({
+                "question": output.get("question", f"Q{i+1}"),
+                "answer_preview": output.get("answer", "")[:120],
+                "composite_score": eval_r.get("composite_score", 0.0),
+                "scores": eval_r.get("scores", {}),
+                "suggestions": eval_r.get("suggestions", []),
+                "flags": eval_r.get("flags", [])
+            })
+        
+        # Per-criteria aggregation
+        criteria_avgs = {}
+        for criterion in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]:
+            vals = [e["scores"].get(criterion, 0) for e in valid_evals]
+            criteria_avgs[criterion] = sum(vals) / len(vals) if vals else 0.0
+        
+        weak = [c for c, v in criteria_avgs.items() if v < 6.0]
+        strong = [c for c, v in criteria_avgs.items() if v >= 8.0]
+        
+        duration = time.time() - iter_start
+        
+        # Log iteration with all details
         self.iteration_logs.append(IterationLog(
             iteration=state["iteration"] + 1,
             prompt=state["current_prompt"],
             score=state["current_score"],
             evaluations=state["evaluations"],
             generated_outputs=state["generated_outputs"],
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
+            per_question_scores=per_q_scores,
+            weak_criteria=weak,
+            strong_criteria=strong,
+            optimization_modifications=modifications,
+            duration_seconds=duration
         ))
         
         # Increment iteration
@@ -285,7 +422,7 @@ class LangGraphOrchestrator:
         return state
     
     def _should_continue(self, state: OptimizationState) -> str:
-        """Decide whether to continue or finish"""
+        """Decide whether to continue or finish, with auto-rollback on score drops"""
         # Check max iterations
         if state["iteration"] >= state["max_iterations"]:
             print(f"\n  [STOP] Max iterations ({state['max_iterations']}) reached")
@@ -297,6 +434,21 @@ class LangGraphOrchestrator:
             state["converged"] = True
             return "end"
         
+        # Check for score degradation — rollback to best prompt
+        history = state["performance_history"]
+        if len(history) >= 2:
+            prev_score = history[-2]
+            curr_score = history[-1]
+            drop = prev_score - curr_score
+            
+            if drop > 0.5:
+                # Significant score drop — rollback to best prompt
+                best_idx = history.index(max(history))
+                if best_idx < len(self.iteration_logs):
+                    best_prompt = self.iteration_logs[best_idx].prompt
+                    state["current_prompt"] = best_prompt
+                    print(f"\n  [ROLLBACK] Score dropped {drop:.1f} pts. Reverted to best prompt (iter {best_idx + 1}, score {history[best_idx]:.1f})")
+        
         # Check improvement plateau
         if self.optimizer.check_convergence(state["performance_history"]):
             print(f"\n  [INFO] Improvement plateau detected")
@@ -307,17 +459,74 @@ class LangGraphOrchestrator:
         return "continue"
     
     def _finalize_node(self, state: OptimizationState) -> OptimizationState:
-        """Finalize and compile results"""
+        """Finalize and compile rich results with per-iteration detail"""
         print(f"\n  Finalizing results...")
         
+        # Use the best score from history, not the last one (which may be 0 from network error)
+        history = state["performance_history"]
+        initial_score = history[0] if history else 0.0
+        best_score = max(history) if history else 0.0
+        final_score = state["current_score"]
+        
+        # If the last score is 0.0 (likely network error), use best score as final
+        if final_score < 0.01 and best_score > 0.01:
+            final_score = best_score
+            print(f"  [INFO] Using best score ({best_score:.2f}) instead of last score (0.00)")
+        
+        # Build detailed iteration data
+        iteration_details = []
+        for log in self.iteration_logs:
+            iteration_details.append({
+                "iteration": log.iteration,
+                "score": log.score,
+                "prompt": log.prompt,
+                "per_question_scores": log.per_question_scores,
+                "weak_criteria": log.weak_criteria,
+                "strong_criteria": log.strong_criteria,
+                "optimization_modifications": log.optimization_modifications,
+                "duration_seconds": log.duration_seconds,
+                "timestamp": log.timestamp
+            })
+        
+        # Overall criteria trend (first vs last iteration)
+        criteria_trend = {}
+        if len(self.iteration_logs) >= 2:
+            first_log = self.iteration_logs[0]
+            last_log = self.iteration_logs[-1]
+            for criterion in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]:
+                first_vals = [q["scores"].get(criterion, 0) for q in first_log.per_question_scores if q.get("scores")]
+                last_vals = [q["scores"].get(criterion, 0) for q in last_log.per_question_scores if q.get("scores")]
+                first_avg = sum(first_vals) / len(first_vals) if first_vals else 0
+                last_avg = sum(last_vals) / len(last_vals) if last_vals else 0
+                criteria_trend[criterion] = {
+                    "initial": round(first_avg, 1),
+                    "final": round(last_avg, 1),
+                    "change": round(last_avg - first_avg, 1)
+                }
+        
+        # Plain-English summary
+        improvement = final_score - initial_score
+        if improvement > 1.0:
+            summary_text = f"Excellent improvement! Score rose from {initial_score:.1f} to {final_score:.1f} (+{improvement:.1f})"
+        elif improvement > 0:
+            summary_text = f"The prompt improved from {initial_score:.1f} to {final_score:.1f} (+{improvement:.1f})"
+        elif improvement > -0.5:
+            summary_text = f"Score stayed roughly the same ({initial_score:.1f} -> {final_score:.1f}). The prompt may already be near-optimal."
+        else:
+            summary_text = f"Score declined from {initial_score:.1f} to {final_score:.1f}. Consider reverting to the original prompt."
+        
         final_results = {
-            "initial_score": state["performance_history"][0] if state["performance_history"] else 0.0,
-            "final_score": state["current_score"],
-            "improvement": state["current_score"] - (state["performance_history"][0] if state["performance_history"] else 0),
+            "initial_score": initial_score,
+            "final_score": final_score,
+            "best_score": best_score,
+            "improvement": improvement,
             "iterations": state["iteration"],
             "converged": state["converged"],
             "final_prompt": state["current_prompt"],
-            "performance_history": state["performance_history"],
+            "performance_history": history,
+            "summary": summary_text,
+            "criteria_trend": criteria_trend,
+            "iteration_details": iteration_details,
             "raw_results": {
                 "iterations": [asdict(log) for log in self.iteration_logs]
             }
@@ -325,14 +534,20 @@ class LangGraphOrchestrator:
         
         state["final_results"] = final_results
         
-        print(f"\n  Optimization complete!")
-        print(f"   Initial score: {final_results['initial_score']:.2f}")
-        print(f"   Final score:   {final_results['final_score']:.2f}")
-        print(f"   Improvement:   +{final_results['improvement']:.2f}")
-        print(f"   Iterations:    {final_results['iterations']}")
+        print(f"\n  {'=' * 55}")
+        print(f"   OPTIMIZATION COMPLETE")
+        print(f"  {'=' * 55}")
+        print(f"   Initial score : {initial_score:.1f}/10")
+        print(f"   Best score    : {best_score:.1f}/10")
+        print(f"   Final score   : {final_score:.1f}/10")
+        print(f"   Change        : {improvement:+.1f}")
+        print(f"   Iterations    : {state['iteration']}")
+        print(f"   {summary_text}")
+        print(f"  {'=' * 55}")
         
         return state
     
+    @_ls_traceable(run_type="chain", name="Astra AI Optimization Loop")
     def run_optimization(
         self,
         questions: List[str],
@@ -348,6 +563,8 @@ class LangGraphOrchestrator:
         Returns:
             Final results dict
         """
+        self._loop_start_time = time.time()
+        
         print("\n" + "="*70)
         print("  Starting LangGraph Optimization Workflow")
         print("="*70)

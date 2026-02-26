@@ -20,9 +20,14 @@ except ImportError:
 # LangSmith (optional)
 try:
     from langsmith import Client as LangSmithClient
+    from langsmith import traceable as _ls_traceable
     langsmith_available = True
 except ImportError:
     langsmith_available = False
+    def _ls_traceable(*a, **kw):
+        def _dec(fn): return fn
+        if a and callable(a[0]): return a[0]
+        return _dec
 
 # Use working HuggingFace provider
 from agents.huggingface_provider import HuggingFaceProvider
@@ -64,10 +69,9 @@ class LangChainOptimizerAgent:
         if enable_langsmith and langsmith_available:
             try:
                 self.langsmith_client = LangSmithClient()
-                os.environ["LANGCHAIN_TRACING_V2"] = "true"
-                os.environ["LANGCHAIN_PROJECT"] = "astra-ai-optimizer"
+                os.environ.setdefault("LANGCHAIN_PROJECT", "astra-ai")
                 self.langsmith_enabled = True
-                print("LangSmith tracing enabled for Optimizer Agent")
+                print("  LangSmith tracing enabled for Optimizer Agent")
             except Exception:
                 pass
         
@@ -130,6 +134,7 @@ Begin your optimization:"""
         print(f"LangChain Optimizer Agent initialized")
         print(f"   Model: {model_name}")
     
+    @_ls_traceable(run_type="chain", name="Optimizer Optimize Prompt")
     def optimize(
         self,
         current_prompt: str,
@@ -287,6 +292,9 @@ Begin your optimization:"""
             # Fallback: use entire response
             optimized_prompt = response.strip()
         
+        # Validate: must contain {question} placeholder
+        optimized_prompt = self._validate_prompt(optimized_prompt)
+        
         # Extract modifications (look for numbered list)
         modifications = []
         if "Proposed Modifications:" in response:
@@ -317,6 +325,54 @@ Begin your optimization:"""
             "rationale": rationale,
             "confidence": 0.85
         }
+    
+    def _validate_prompt(self, prompt: str) -> str:
+        """Validate and fix optimized prompt to ensure it's usable.
+        
+        Rules:
+        - Must contain {question} placeholder
+        - Must not be too short (<20 chars) or too long (>3000 chars)
+        - Must not accidentally include analysis/response artifacts
+        """
+        # Strip common LLM artifacts
+        for prefix in ["Here is the optimized prompt:", "Here's the improved prompt:", 
+                        "Optimized version:", "Revised prompt:"]:
+            if prompt.lower().startswith(prefix.lower()):
+                prompt = prompt[len(prefix):].strip()
+        
+        # Ensure {question} placeholder exists
+        if "{question}" not in prompt:
+            # Try common variations
+            for variant in ["{Question}", "{{question}}", "[question]", "<question>"]:
+                if variant in prompt:
+                    prompt = prompt.replace(variant, "{question}")
+                    break
+            else:
+                # Append a question section if completely missing
+                prompt = prompt.rstrip() + "\n\nQuestion: {question}\n\nAnswer:"
+                print("    [FIX] Added missing {question} placeholder to optimized prompt")
+        
+        # Truncate if too long (prevent unbounded growth)
+        if len(prompt) > 3000:
+            # Keep first 2800 chars + question placeholder
+            prompt = prompt[:2800] + "\n\nQuestion: {question}\n\nAnswer:"
+            print("    [FIX] Truncated over-long prompt")
+        
+        # If too short/empty, return a sensible default
+        if len(prompt.strip()) < 20:
+            prompt = """Answer the following question clearly and concisely.
+
+Question: {question}
+
+Requirements:
+- Be factually accurate
+- Explain your reasoning step-by-step
+- Use clear language
+
+Answer:"""
+            print("    [FIX] Prompt was too short, using default template")
+        
+        return prompt
     
     def check_convergence(self, performance_history: List[float]) -> bool:
         """Check if optimization has converged"""

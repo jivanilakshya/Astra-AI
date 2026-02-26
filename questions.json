@@ -1,0 +1,469 @@
+{
+  "questions": [
+    {
+      "id": 1,
+      "question": "What is the difference between Artificial Intelligence, Machine Learning, and Deep Learning?",
+      "ground_truth": "AI is the broadest concept — any system that mimics human intelligence. ML is a subset of AI where algorithms learn patterns from data without being explicitly programmed. DL is a subset of ML that uses multi-layer neural networks (deep neural nets) to learn hierarchical representations. AI ⊃ ML ⊃ DL.",
+      "category": "computer_science",
+      "difficulty": "easy",
+      "context": "Covers the core hierarchy tested in compare mode"
+    },
+    {
+      "id": 2,
+      "question": "Explain how backpropagation works in a neural network.",
+      "ground_truth": "Backpropagation computes the gradient of the loss function with respect to each weight by applying the chain rule of calculus, layer by layer from output to input. These gradients are then used by an optimizer (e.g., SGD, Adam) to update the weights and reduce the loss.",
+      "category": "computer_science",
+      "difficulty": "hard",
+      "context": "Tests reasoning and clarity on a technical explanation"
+    },
+    {
+      "id": 3,
+      "question": "What is overfitting in machine learning and how can you prevent it?",
+      "ground_truth": "Overfitting occurs when a model learns the noise in training data rather than the underlying pattern, performing well on training data but poorly on unseen data. Prevention methods include: regularization (L1/L2), dropout, cross-validation, early stopping, data augmentation, and using simpler models.",
+      "category": "computer_science",
+      "difficulty": "medium"
+    },
+    {
+      "id": 4,
+      "question": "Compare supervised learning, unsupervised learning, and reinforcement learning with examples.",
+      "ground_truth": "Supervised learning uses labeled data to learn a mapping (e.g., spam detection). Unsupervised learning finds patterns in unlabeled data (e.g., customer clustering). Reinforcement learning learns by interacting with an environment and receiving rewards (e.g., game-playing agents like AlphaGo).",
+      "category": "computer_science",
+      "difficulty": "medium",
+      "context": "Tests comparison ability and the pros_cons constraint"
+    },
+    {
+      "id": 5,
+      "question": "What is a transformer model and why is it important in NLP?",
+      "ground_truth": "A transformer is a neural network architecture based on self-attention mechanisms that processes all tokens in parallel rather than sequentially. It is important because it enables efficient training on large datasets and powers models like BERT, GPT, and T5 that achieve state-of-the-art results in NLP tasks.",
+      "category": "computer_science",
+      "difficulty": "hard"
+    },
+    {
+      "id": 6,
+      "question": "Write a Python function to check if a given string is a palindrome.",
+      "ground_truth": "def is_palindrome(s: str) -> bool:\n    cleaned = s.lower().replace(' ', '')\n    return cleaned == cleaned[::-1]\n\nTime complexity: O(n), Space complexity: O(n).",
+      "category": "code_python",
+      "difficulty": "easy",
+      "context": "Tests code intent detection, Python language detection, function task type"
+    },
+    {
+      "id": 7,
+      "question": "Implement binary search algorithm in Python with step-by-step explanation.",
+      "ground_truth": "def binary_search(arr, target):\n    low, high = 0, len(arr) - 1\n    while low <= high:\n        mid = (low + high) // 2\n        if arr[mid] == target: return mid\n        elif arr[mid] < target: low = mid + 1\n        else: high = mid - 1\n    return -1\n\nTime: O(log n), Space: O(1).",
+      "category": "code_python",
+      "difficulty": "medium",
+      "context": "Tests algorithm task type with Big-O requirement"
+    },
+    {
+      "id": 8,
+      "question": "Create a Python class for a stack data structure with push, pop, peek, and is_empty methods.",
+      "ground_truth": "class Stack:\n    def __init__(self): self.items = []\n    def push(self, item): self.items.append(item)\n    def pop(self): return self.items.pop() if self.items else None\n    def peek(self): return self.items[-1] if self.items else None\n    def is_empty(self): return len(self.items) == 0\n\nAll operations are O(1).",
+      "category": "code_python",
+      "difficulty": "easy",
+      "context": "Tests class task type with constructor, methods, docstrings"
+    },
+    {
+      "id": 9,
+      "question": "Write a recursive Python function to calculate the nth Fibonacci number with memoization.",
+      "ground_truth": "from functools import lru_cache\n\n@lru_cache(maxsize=None)\ndef fibonacci(n: int) -> int:\n    if n <= 1: return n\n    return fibonacci(n-1) + fibonacci(n-2)\n\nWith memoization: O(n) time, O(n) space. Without: O(2^n) time.",
+      "category": "code_python",
+      "difficulty": "medium",
+      "context": "Tests algorithm + recursion detection"
+    },
+    {
+      "id": 10,
+      "question": "Implement a Python function to find the longest common subsequence of two strings.",
+      "ground_truth": "def lcs(s1, s2):\n    m, n = len(s1), len(s2)\n    dp = [[0]*(n+1) for _ in range(m+1)]\n    for i in range(1, m+1):\n        for j in range(1, n+1):\n            if s1[i-1] == s2[j-1]: dp[i][j] = dp[i-1][j-1]+1\n            else: dp[i][j] = max(dp[i-1][j], dp[i][j-1])\n    return dp[m][n]\n\nTime: O(mn), Space: O(mn).",
+      "category": "code_python",
+      "difficulty": "hard",
+      "context": "Tests complex algorithm with dynamic programming"
+    },
+    {
+      "id": 11,
+      "question": "Write a JavaScript function to debounce another function with a given delay.",
+      "ground_truth": "function debounce(fn, delay) {\n  let timer;\n  return function(...args) {\n    clearTimeout(timer);\n    timer = setTimeout(() => fn.apply(this, args), delay);\n  };\n}\n\nDebouncing ensures fn is called only after the caller has stopped invoking it for 'delay' ms.",
+      "category": "code_javascript",
+      "difficulty": "medium",
+      "context": "Tests JavaScript detection and function task type"
+    },
+    {
+      "id": 12,
+      "question": "Create a TypeScript class for a simple REST API client with GET and POST methods using fetch.",
+      "ground_truth": "class ApiClient {\n  constructor(private baseUrl: string) {}\n  async get<T>(path: string): Promise<T> {\n    const res = await fetch(`${this.baseUrl}${path}`);\n    return res.json();\n  }\n  async post<T>(path: string, body: unknown): Promise<T> {\n    const res = await fetch(`${this.baseUrl}${path}`, {\n      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)\n    });\n    return res.json();\n  }\n}",
+      "category": "code_javascript",
+      "difficulty": "hard",
+      "context": "Tests TypeScript detection, class + api task type combo"
+    },
+    {
+      "id": 13,
+      "question": "Write a Java method to sort an array using merge sort algorithm.",
+      "ground_truth": "Merge sort divides the array into halves recursively, sorts each half, then merges them. Time: O(n log n), Space: O(n). The merge step compares elements from both halves and builds a sorted result.",
+      "category": "code_java",
+      "difficulty": "hard",
+      "context": "Tests Java detection and algorithm task type"
+    },
+    {
+      "id": 14,
+      "question": "Implement a Java class for a singly linked list with insert, delete, and display methods.",
+      "ground_truth": "A singly linked list stores data in nodes where each node has a value and a next pointer. Insert adds a node at head or tail, delete removes by value, display traverses printing each node. All use O(1) or O(n) operations.",
+      "category": "code_java",
+      "difficulty": "medium",
+      "context": "Tests Java detection and class task type"
+    },
+    {
+      "id": 15,
+      "question": "Write a C++ function to implement quicksort on a vector of integers.",
+      "ground_truth": "Quicksort selects a pivot, partitions elements around it (smaller left, larger right), and recursively sorts both partitions. Average time: O(n log n), worst case: O(n²). Space: O(log n) for recursion stack.",
+      "category": "code_cpp",
+      "difficulty": "hard",
+      "context": "Tests C++ detection and algorithm task type"
+    },
+    {
+      "id": 16,
+      "question": "Write a SQL query to find the top 5 customers by total order amount with their details.",
+      "ground_truth": "SELECT c.customer_id, c.name, SUM(o.amount) AS total FROM customers c JOIN orders o ON c.customer_id = o.customer_id GROUP BY c.customer_id, c.name ORDER BY total DESC LIMIT 5;",
+      "category": "code_sql",
+      "difficulty": "medium",
+      "context": "Tests SQL detection and query task type"
+    },
+    {
+      "id": 17,
+      "question": "Write a Rust function that reads a file and returns its contents as a String, handling errors properly.",
+      "ground_truth": "use std::fs; fn read_file(path: &str) -> Result<String, std::io::Error> { fs::read_to_string(path) } Uses Rust's Result type for error propagation.",
+      "category": "code_rust",
+      "difficulty": "medium",
+      "context": "Tests Rust detection and error handling requirement"
+    },
+    {
+      "id": 18,
+      "question": "Debug this Python code: def factorial(n): return n * factorial(n-1). It causes a RecursionError.",
+      "ground_truth": "The function has no base case. Fix: def factorial(n):\n    if n <= 1: return 1\n    return n * factorial(n - 1)\nWithout a base case (n <= 1), the recursion never terminates.",
+      "category": "code_debug",
+      "difficulty": "easy",
+      "context": "Tests debug task type — root cause + corrected code"
+    },
+    {
+      "id": 19,
+      "question": "Refactor this Python code to be more Pythonic: result = []; for i in range(len(data)): if data[i] > 0: result.append(data[i] * 2)",
+      "ground_truth": "result = [x * 2 for x in data if x > 0]\n\nUses list comprehension instead of manual loop with append. More readable, concise, and slightly faster.",
+      "category": "code_refactor",
+      "difficulty": "easy",
+      "context": "Tests refactor task type detection"
+    },
+    {
+      "id": 20,
+      "question": "Write a Python Flask REST API endpoint that accepts a JSON body with a 'text' field and returns the word count.",
+      "ground_truth": "from flask import Flask, request, jsonify\napp = Flask(__name__)\n\n@app.route('/wordcount', methods=['POST'])\ndef word_count():\n    data = request.get_json()\n    text = data.get('text', '')\n    count = len(text.split())\n    return jsonify({'word_count': count})\n\nRequest: POST /wordcount {\"text\": \"hello world\"} → Response: {\"word_count\": 2}",
+      "category": "code_api",
+      "difficulty": "medium",
+      "context": "Tests api task type with request/response format requirement"
+    },
+    {
+      "id": 21,
+      "question": "Write a complete Python script that reads a CSV file, calculates the average of a numeric column, and writes the result to a new file.",
+      "ground_truth": "import csv\n\ndef csv_average(input_file, column, output_file):\n    with open(input_file) as f:\n        reader = csv.DictReader(f)\n        values = [float(row[column]) for row in reader]\n    avg = sum(values) / len(values)\n    with open(output_file, 'w') as f:\n        f.write(f'Average of {column}: {avg}')\n    return avg",
+      "category": "code_python",
+      "difficulty": "medium",
+      "context": "Tests full program / script task type"
+    },
+    {
+      "id": 22,
+      "question": "Explain Einstein's theory of special relativity in simple terms.",
+      "ground_truth": "Special relativity states that the laws of physics are the same for all non-accelerating observers, and the speed of light in a vacuum is constant regardless of the observer's motion. Key consequences: time dilation (moving clocks tick slower), length contraction, and mass-energy equivalence (E=mc²).",
+      "category": "physics",
+      "difficulty": "hard",
+      "context": "Tests explanation quality and audience_beginner constraint"
+    },
+    {
+      "id": 23,
+      "question": "What is the Heisenberg Uncertainty Principle?",
+      "ground_truth": "The Heisenberg Uncertainty Principle states that it is impossible to simultaneously know both the exact position and exact momentum of a particle. The more precisely one is measured, the less precisely the other can be known. Mathematically: Δx·Δp ≥ ℏ/2.",
+      "category": "physics",
+      "difficulty": "hard"
+    },
+    {
+      "id": 24,
+      "question": "Why is the sky blue?",
+      "ground_truth": "The sky appears blue because molecules in the atmosphere scatter shorter blue wavelengths of sunlight more than longer red wavelengths. This is called Rayleigh scattering. At sunset, light travels through more atmosphere, scattering away blue light and leaving red/orange.",
+      "category": "physics",
+      "difficulty": "easy"
+    },
+    {
+      "id": 25,
+      "question": "What is photosynthesis and why is it important for life on Earth?",
+      "ground_truth": "Photosynthesis is the process by which plants, algae, and some bacteria convert sunlight, CO₂, and water into glucose and oxygen using chlorophyll. The equation: 6CO₂ + 6H₂O + light → C₆H₁₂O₆ + 6O₂. It is essential because it produces oxygen for respiration and forms the base of most food chains.",
+      "category": "biology",
+      "difficulty": "easy"
+    },
+    {
+      "id": 26,
+      "question": "Explain the process of DNA replication step by step.",
+      "ground_truth": "1) Helicase unwinds the double helix. 2) Single-strand binding proteins stabilize unwound strands. 3) Primase adds RNA primers. 4) DNA polymerase III synthesizes new strands (leading strand continuously, lagging strand in Okazaki fragments). 5) DNA polymerase I replaces primers with DNA. 6) Ligase seals gaps. Result: two identical DNA molecules (semi-conservative replication).",
+      "category": "biology",
+      "difficulty": "hard",
+      "context": "Tests step-by-step explanation quality"
+    },
+    {
+      "id": 27,
+      "question": "What is CRISPR-Cas9 and how does it work?",
+      "ground_truth": "CRISPR-Cas9 is a gene-editing tool that uses a guide RNA to direct the Cas9 enzyme to a specific DNA sequence, where it makes a precise cut. The cell's repair mechanisms then either disable the gene (NHEJ) or insert new genetic material (HDR). Applications include treating genetic diseases, agriculture, and research.",
+      "category": "biology",
+      "difficulty": "hard"
+    },
+    {
+      "id": 28,
+      "question": "Explain the concept of derivatives in calculus with a real-world example.",
+      "ground_truth": "A derivative measures the instantaneous rate of change of a function. If f(x) represents position over time, f'(x) gives velocity. For f(x) = x², f'(x) = 2x. Real-world example: if a car's position is s(t) = 5t², its velocity at time t is s'(t) = 10t.",
+      "category": "mathematics",
+      "difficulty": "medium",
+      "context": "Tests math explanation with examples constraint"
+    },
+    {
+      "id": 29,
+      "question": "What is the difference between permutations and combinations? Provide formulas and examples.",
+      "ground_truth": "Permutations count ordered arrangements: P(n,r) = n!/(n-r)!. Combinations count unordered selections: C(n,r) = n!/(r!(n-r)!). Example: choosing 3 people from 5 for president/VP/secretary = P(5,3) = 60 (order matters). Choosing 3 people for a committee = C(5,3) = 10 (order doesn't matter).",
+      "category": "mathematics",
+      "difficulty": "medium"
+    },
+    {
+      "id": 30,
+      "question": "Prove that the square root of 2 is irrational.",
+      "ground_truth": "Proof by contradiction: Assume √2 = a/b where a,b are coprime integers. Then 2 = a²/b², so a² = 2b². This means a² is even, so a is even (a = 2k). Substituting: 4k² = 2b², so b² = 2k², meaning b is also even. But if both a and b are even, they share factor 2, contradicting our assumption they are coprime. Therefore √2 is irrational.",
+      "category": "mathematics",
+      "difficulty": "hard",
+      "context": "Tests reasoning quality on formal proofs"
+    },
+    {
+      "id": 31,
+      "question": "Explain the water cycle and its main stages.",
+      "ground_truth": "The water cycle has four main stages: 1) Evaporation — water from oceans/lakes turns to vapor from heat. 2) Condensation — vapor cools and forms clouds. 3) Precipitation — water falls as rain, snow, sleet, or hail. 4) Collection — water gathers in rivers, lakes, oceans, and groundwater. The cycle is powered by solar energy.",
+      "category": "earth_science",
+      "difficulty": "easy"
+    },
+    {
+      "id": 32,
+      "question": "How does a black hole form and what happens at the event horizon?",
+      "ground_truth": "A black hole forms when a massive star (>25 solar masses) exhausts its fuel and its core collapses under gravity in a supernova. The event horizon is the boundary beyond which the escape velocity exceeds the speed of light — nothing, not even light, can escape. Inside, physics as we know it breaks down at the singularity.",
+      "category": "astronomy",
+      "difficulty": "hard"
+    },
+    {
+      "id": 33,
+      "question": "What is the periodic table and how is it organized?",
+      "ground_truth": "The periodic table organizes all known chemical elements by increasing atomic number (number of protons). Rows (periods) represent energy levels, and columns (groups) group elements with similar chemical properties. Metals are on the left, nonmetals on the right, with metalloids in between.",
+      "category": "chemistry",
+      "difficulty": "easy"
+    },
+    {
+      "id": 34,
+      "question": "What is inflation and what causes it?",
+      "ground_truth": "Inflation is the sustained increase in the general price level of goods and services over time, reducing purchasing power. Main causes: demand-pull inflation (excess demand), cost-push inflation (rising production costs), and monetary inflation (excessive money supply growth). Measured by CPI or GDP deflator.",
+      "category": "economics",
+      "difficulty": "medium"
+    },
+    {
+      "id": 35,
+      "question": "Compare the pros and cons of capitalism versus socialism.",
+      "ground_truth": "Capitalism: Pros — innovation incentive, individual freedom, efficient resource allocation via markets. Cons — inequality, exploitation risk, market failures. Socialism: Pros — reduced inequality, universal services, worker empowerment. Cons — less innovation incentive, central planning inefficiency, potential for authoritarianism. Most modern economies are mixed systems.",
+      "category": "economics",
+      "difficulty": "hard",
+      "context": "Tests comparison quality and pros_cons constraint"
+    },
+    {
+      "id": 36,
+      "question": "What were the main causes of World War I?",
+      "ground_truth": "The main causes (MANIA): Militarism (arms race), Alliances (entangling alliances), Nationalism (ethnic tensions), Imperialism (colonial competition), and the Assassination of Archduke Franz Ferdinand in 1914. These factors created a powder keg where one event triggered a chain reaction of declarations of war.",
+      "category": "history",
+      "difficulty": "medium"
+    },
+    {
+      "id": 37,
+      "question": "What is climate change and what evidence supports it?",
+      "ground_truth": "Climate change is the long-term shift in global temperatures and weather patterns, primarily driven by human activities (burning fossil fuels, deforestation) increasing greenhouse gases. Evidence: rising global temperatures (+1.1°C since pre-industrial), melting ice caps, rising sea levels, more extreme weather events, ocean acidification, and CO₂ levels above 420 ppm.",
+      "category": "earth_science",
+      "difficulty": "medium",
+      "context": "Tests cite_sources constraint applicability"
+    },
+    {
+      "id": 38,
+      "question": "Tell me about stuff.",
+      "ground_truth": "This is intentionally vague. The optimizer should detect vagueness and request clarification or add specificity constraints.",
+      "category": "prompt_quality",
+      "difficulty": "easy",
+      "context": "Tests vague prompt detection — contains vague word 'stuff'"
+    },
+    {
+      "id": 39,
+      "question": "Fix it.",
+      "ground_truth": "Intentionally ambiguous — 'it' is an undefined referent. The system should detect ambiguity and low specificity.",
+      "category": "prompt_quality",
+      "difficulty": "easy",
+      "context": "Tests ambiguous pronoun detection and short prompt detection"
+    },
+    {
+      "id": 40,
+      "question": "hi",
+      "ground_truth": "Greeting without a question. The system should detect this as a non-question greeting with very low quality grade.",
+      "category": "prompt_quality",
+      "difficulty": "easy",
+      "context": "Tests greeting detection pattern"
+    },
+    {
+      "id": 41,
+      "question": "Something about that thing we discussed, make it better somehow?",
+      "ground_truth": "Maximum vagueness — contains 'something', 'that', 'thing', 'better', 'somehow'. Should score very high on vagueness scale.",
+      "category": "prompt_quality",
+      "difficulty": "easy",
+      "context": "Tests multiple vague words and ambiguous pronoun stacking"
+    },
+    {
+      "id": 42,
+      "question": "Explain the CAP theorem in distributed systems. Include what each letter stands for, why you can only guarantee two out of three, and provide a real-world example for each combination (CP, AP, CA).",
+      "ground_truth": "CAP theorem states a distributed system can guarantee at most two of three: Consistency (all nodes see same data), Availability (every request gets a response), Partition tolerance (system works despite network failures). CP: MongoDB (consistent during partitions but may be unavailable). AP: Cassandra (available during partitions but eventually consistent). CA: Traditional RDBMS (consistent and available but can't handle partitions).",
+      "category": "computer_science",
+      "difficulty": "hard",
+      "context": "Tests a high-quality, specific prompt — should get grade A/B"
+    },
+    {
+      "id": 43,
+      "question": "A farmer has 100 meters of fencing. What dimensions should a rectangular field have to maximize the enclosed area?",
+      "ground_truth": "For a rectangle with perimeter P=100m: 2l+2w=100, so l+w=50. Area A=l·w=l·(50-l). Taking derivative: dA/dl=50-2l=0, so l=25. Therefore w=25. The optimal rectangle is a 25m×25m square with area 625m². This is a classic optimization problem.",
+      "category": "mathematics",
+      "difficulty": "medium",
+      "context": "Tests mathematical reasoning and step-by-step logic"
+    },
+    {
+      "id": 44,
+      "question": "If all Bloops are Razzies, and all Razzies are Lazzies, are all Bloops definitely Lazzies? Explain your reasoning.",
+      "ground_truth": "Yes. This is a syllogism (transitive relation). If Bloops ⊂ Razzies and Razzies ⊂ Lazzies, then Bloops ⊂ Lazzies. Every Bloop is a Razzy, and every Razzy is a Lazzy, so every Bloop must be a Lazzy.",
+      "category": "logic",
+      "difficulty": "easy",
+      "context": "Tests pure logical reasoning evaluation"
+    },
+    {
+      "id": 45,
+      "question": "Analyze this argument: 'All successful companies use AI. My company uses AI. Therefore, my company will be successful.' Is it valid?",
+      "ground_truth": "This is the logical fallacy of affirming the consequent. The premise says all successful companies use AI (Success → AI), but it does NOT say all AI-using companies are successful (AI → Success). The argument is invalid. It's like saying 'All dogs are animals, my cat is an animal, therefore my cat is a dog.'",
+      "category": "logic",
+      "difficulty": "medium",
+      "context": "Tests reasoning criterion — detecting logical fallacies"
+    },
+    {
+      "id": 46,
+      "question": "In one sentence, what is an API?",
+      "ground_truth": "An API (Application Programming Interface) is a set of rules and protocols that allows different software applications to communicate with each other.",
+      "category": "computer_science",
+      "difficulty": "easy",
+      "context": "Tests conciseness criterion — answer should be brief"
+    },
+    {
+      "id": 47,
+      "question": "Summarize the theory of evolution in under 50 words.",
+      "ground_truth": "Evolution by natural selection proposes that organisms with traits better suited to their environment survive and reproduce more successfully, passing those traits to offspring. Over generations, this leads to species adaptation and diversification. Darwin formulated this theory after observing variation across species.",
+      "category": "biology",
+      "difficulty": "medium",
+      "context": "Tests conciseness constraint handling"
+    },
+    {
+      "id": 48,
+      "question": "How does blockchain technology enable decentralized finance (DeFi), and what are the risks?",
+      "ground_truth": "Blockchain provides a decentralized, immutable ledger that enables DeFi through smart contracts — self-executing code on networks like Ethereum. DeFi applications include lending (Aave), trading (Uniswap), and stablecoins (DAI). Risks: smart contract bugs, regulatory uncertainty, liquidity crises, oracle manipulation, and high gas fees.",
+      "category": "computer_science",
+      "difficulty": "hard",
+      "context": "Tests multi-concept explanation with pros_cons"
+    },
+    {
+      "id": 49,
+      "question": "Compare REST, GraphQL, and gRPC APIs. When would you choose each?",
+      "ground_truth": "REST: Resource-based URLs, HTTP methods, widely supported — best for simple CRUD APIs. GraphQL: Client specifies exact data needed, single endpoint — best when clients need flexible queries (mobile apps). gRPC: Uses Protocol Buffers, bidirectional streaming, high performance — best for microservices and real-time communication. Trade-offs: REST is simplest, GraphQL prevents over-fetching, gRPC is fastest.",
+      "category": "computer_science",
+      "difficulty": "hard",
+      "context": "Tests comparison with multiple items and trade-off analysis"
+    },
+    {
+      "id": 50,
+      "question": "Explain recursion. Also, what is your favorite color?",
+      "ground_truth": "Recursion is a programming technique where a function calls itself to solve a problem by breaking it into smaller subproblems. It requires a base case (stopping condition) and a recursive case. Example: factorial(n) = n * factorial(n-1), base case: factorial(0) = 1. The second part about favorite color is irrelevant and should be ignored or briefly acknowledged.",
+      "category": "relevance_test",
+      "difficulty": "medium",
+      "context": "Tests relevance criterion — LLM should focus on recursion, not color"
+    },
+    {
+      "id": 51,
+      "question": "Explain the difference between a hash map and a binary search tree. When would you use each?",
+      "ground_truth": "Hash map: O(1) average lookup/insert using hash function, unordered. BST: O(log n) lookup/insert, maintains sorted order. Use hash map when you need fast lookup without ordering. Use BST when you need sorted data, range queries, or ordered iteration. Hash maps degrade to O(n) with collisions; BSTs degrade to O(n) if unbalanced.",
+      "category": "computer_science",
+      "difficulty": "medium"
+    },
+    {
+      "id": 52,
+      "question": "Implement a Python function for depth-first search (DFS) on a graph represented as an adjacency list.",
+      "ground_truth": "def dfs(graph, start, visited=None):\n    if visited is None: visited = set()\n    visited.add(start)\n    for neighbor in graph[start]:\n        if neighbor not in visited:\n            dfs(graph, neighbor, visited)\n    return visited\n\nTime: O(V+E), Space: O(V). Uses recursion and a visited set to avoid cycles.",
+      "category": "code_python",
+      "difficulty": "medium",
+      "context": "Tests algorithm task type with graph traversal"
+    },
+    {
+      "id": 53,
+      "question": "Explain SOLID principles in object-oriented programming with a brief example for each.",
+      "ground_truth": "S - Single Responsibility: A class should have one reason to change. O - Open/Closed: Open for extension, closed for modification. L - Liskov Substitution: Subtypes must be substitutable for base types. I - Interface Segregation: Many specific interfaces > one general interface. D - Dependency Inversion: Depend on abstractions, not concretions.",
+      "category": "computer_science",
+      "difficulty": "hard",
+      "context": "Tests comprehensive explanation with examples constraint"
+    },
+    {
+      "id": 54,
+      "question": "What is the difference between horizontal and vertical scaling? Give advantages of each.",
+      "ground_truth": "Vertical scaling (scale up): Add more resources (CPU, RAM) to one server. Simple but has hardware limits. Horizontal scaling (scale out): Add more servers/instances. More complex but virtually unlimited scalability. Vertical: easier, no code changes. Horizontal: fault-tolerant, cost-effective at large scale, requires load balancing.",
+      "category": "computer_science",
+      "difficulty": "medium"
+    },
+    {
+      "id": 55,
+      "question": "What is Python?",
+      "ground_truth": "Python is a high-level, interpreted, general-purpose programming language known for its simple syntax, readability, and versatility. Created by Guido van Rossum (1991). Used in web development, data science, AI/ML, automation, and more.",
+      "category": "computer_science",
+      "difficulty": "easy",
+      "context": "Tests simple complexity routing — short factual answer"
+    },
+    {
+      "id": 56,
+      "question": "Define the term 'algorithm'.",
+      "ground_truth": "An algorithm is a finite set of well-defined, step-by-step instructions for solving a specific problem or performing a computation. It has a clear input, process, and output.",
+      "category": "computer_science",
+      "difficulty": "easy",
+      "context": "Tests simple complexity — 'define' is a simple pattern"
+    },
+    {
+      "id": 57,
+      "question": "Analyze the trade-offs between microservices architecture and monolithic architecture. Consider scalability, development speed, deployment complexity, debugging difficulty, and team organization.",
+      "ground_truth": "Monolithic: Single codebase, simpler deployment, easier debugging, faster initial development. But harder to scale specific components, tightly coupled, large codebase becomes unwieldy. Microservices: Independent scalability, technology flexibility, team autonomy. But complex deployment (needs orchestration), harder debugging (distributed tracing needed), network latency overhead, eventual consistency challenges.",
+      "category": "computer_science",
+      "difficulty": "hard",
+      "context": "Tests complex/critical routing — multiple analysis dimensions"
+    },
+    {
+      "id": 58,
+      "question": "Write HTML and CSS for a responsive navigation bar with a logo on the left and links on the right.",
+      "ground_truth": "Uses flexbox (display: flex, justify-content: space-between) for layout. Navigation links use an unordered list with horizontal display. Media query (@media max-width: 768px) switches to hamburger menu or stacked layout for mobile responsiveness.",
+      "category": "code_html_css",
+      "difficulty": "medium",
+      "context": "Tests HTML/CSS detection in prompt engine"
+    },
+    {
+      "id": 59,
+      "question": "How does HTTPS work? Explain the TLS handshake process.",
+      "ground_truth": "HTTPS = HTTP over TLS. TLS handshake: 1) Client Hello (supported cipher suites, random number). 2) Server Hello (chosen cipher, certificate). 3) Client verifies certificate via Certificate Authority. 4) Key exchange (client generates pre-master secret, encrypts with server's public key). 5) Both derive session keys. 6) Encrypted communication begins. Provides confidentiality, integrity, and authentication.",
+      "category": "computer_science",
+      "difficulty": "hard",
+      "context": "Tests step-by-step technical explanation"
+    },
+    {
+      "id": 60,
+      "question": "Explain how Git works internally. What are blobs, trees, and commits?",
+      "ground_truth": "Git is a content-addressable filesystem. Blobs store file contents (identified by SHA-1 hash). Trees store directory listings (references to blobs and other trees). Commits point to a tree (snapshot) and parent commit(s), forming a DAG. Branches are movable pointers to commits. HEAD points to the current branch.",
+      "category": "computer_science",
+      "difficulty": "hard"
+    }
+  ]
+}

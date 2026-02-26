@@ -70,8 +70,8 @@ class Config:
         # HuggingFace settings
         self.huggingface_api_key = os.getenv("HUGGINGFACE_API_KEY")
         
-        # DSPy settings
-        if os.getenv("DSPY_CACHE_DIR"):
+        # DSPy settings (optional - section may be commented out)
+        if os.getenv("DSPY_CACHE_DIR") and 'dspy' in self.config:
             self.config['dspy']['cache_dir'] = os.getenv("DSPY_CACHE_DIR")
         
         if os.getenv("DSPY_MAX_TOKENS"):

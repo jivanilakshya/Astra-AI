@@ -1,0 +1,41 @@
+# ============================================================
+#  ASTRA AI — Testing Commands Reference
+# ============================================================
+
+# ── Interactive Modes ────────────────────────────────────────
+python main.py --interactive                    # Standard interactive menu
+python main.py --interactive --dev              # Developer mode (verbose debug)
+
+# ── Compare Models (side-by-side boxed output) ───────────────
+python main.py --compare "Explain quantum computing"
+python main.py --compare "Difference Between ML, DL and AI"
+python main.py --compare "Write a function to reverse a linked list"
+
+# ── Analyze & Optimize Prompts ───────────────────────────────
+python main.py --analyze "Difference Between ML, DL and AI"
+python main.py --analyze "give me code snippet of binary search in python"
+python main.py --analyze "give me code of sorting algorithm in java"
+python main.py --analyze "Tell me about stuff"           # Tests vague prompt detection
+python main.py --analyze "Fix it"                        # Tests ambiguous detection
+
+# ── Batch Mode (with questions.json) ─────────────────────────
+python main.py --batch questions.json --max-iterations 2
+python main.py --batch questions.json --limit 5 --max-iterations 1
+python main.py --batch questions.json --category code_python --limit 3 --max-iterations 5
+python main.py --batch questions.json --category physics --max-iterations 5
+python main.py --batch questions.json --difficulty easy --limit 5 --max-iterations 2
+python main.py --batch questions.json --category prompt_quality --max-iterations 3
+python main.py --batch questions.json --budget 10.0 --export
+
+# ── Diagnose LangSmith ──────────────────────────────────────
+python main.py --diagnose-tracing
+
+# ── Categories in questions.json (60 questions) ─────────────
+# computer_science (17)  code_python (7)    physics (3)
+# biology (4)            mathematics (4)    economics (2)
+# earth_science (2)      code_java (2)      code_javascript (2)
+# logic (2)              astronomy (1)      chemistry (1)
+# code_api (1)           code_cpp (1)       code_debug (1)
+# code_html_css (1)      code_refactor (1)  code_rust (1)
+# code_sql (1)           history (1)        prompt_quality (4)
+# relevance_test (1)

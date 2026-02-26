@@ -26,13 +26,13 @@ models:
     max_tokens: 2000
     top_p: 0.9
 
-# DSPy configuration
-dspy:
-  cache_dir: "./cache/dspy"
-  enable_cache: true
-  teleprompter: "BootstrapFewShot"  # Options: BootstrapFewShot, MIPRO
-  max_bootstrapped_demos: 4
-  max_labeled_demos: 8
+# Note: DSPy is disabled (causes 30s+ import times with litellm)
+# dspy:
+#   cache_dir: "./cache/dspy"
+#   enable_cache: true
+#   teleprompter: "BootstrapFewShot"
+#   max_bootstrapped_demos: 4
+#   max_labeled_demos: 8
 
 # Optimization parameters
 optimization:
@@ -86,3 +86,42 @@ cost:
   token_counting: true
   export_costs: true
   cost_limit_per_run: null  # Set to number to limit costs
+
+# Runtime mode: "production" or "developer"
+# production = final output only
+# developer  = intermediate prompts, model responses, debug logs
+runtime:
+  mode: "production"  # Options: production, developer
+  verbose_console: true  # Print debug info to console in developer mode
+
+# Smart Router configuration
+router:
+  enabled: true
+  prefer_free: true
+  budget_limit: null
+  feedback_path: "./output/router_feedback.json"
+  # Complexity thresholds for routing
+  complexity_thresholds:
+    simple: 15
+    moderate: 35
+    complex: 60
+
+# Multi-Model Comparison
+multi_model:
+  enabled: true
+  default_models:
+    - "meta-llama/Meta-Llama-3-8B-Instruct"
+    - "mistralai/Mistral-7B-Instruct-v0.2"
+    - "HuggingFaceH4/zephyr-7b-beta"
+
+# Prompt Optimization Engine
+prompt_engine:
+  enabled: true
+  auto_optimize: false  # Auto-optimize prompts before sending
+  history_path: "./output/prompt_history.json"
+
+# Tracing configuration
+tracing:
+  langsmith_enabled: true   # LangSmith tracing is active (API key in .env)
+  fallback_tracing: true    # Also trace to local files as backup
+  trace_dir: "./output/traces"

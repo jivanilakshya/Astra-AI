@@ -22,28 +22,16 @@ except Exception as e:
     LANGCHAIN_AVAILABLE = False
     print(f"[WARN] LangChain agents not available: {e}")
 
-# DSPy agents (legacy - optional)
-try:
-    from agents.judge import (
-        JudgeAgent,
-        create_judge
-    )
-    from agents.orchestrator import (
-        OrchestratorAgent,
-        create_orchestrator
-    )
-    from agents.optimizer import (
-        OptimizerAgent,
-        PromptVersion,
-        OptimizationResult,
-        create_optimizer
-    )
-    DSPY_AVAILABLE = True
-except Exception:
-    DSPY_AVAILABLE = False
+# DSPy agents (DISABLED - causes 30s+ import of litellm/dspy chain)
+# To re-enable, uncomment the block below
+DSPY_AVAILABLE = False
 
 # Build __all__ dynamically
-__all__ = []
+__all__ = [
+    "HuggingFaceProvider",
+    "LANGCHAIN_AVAILABLE",
+    "DSPY_AVAILABLE",
+]
 
 if LANGCHAIN_AVAILABLE:
     __all__.extend([
@@ -53,16 +41,4 @@ if LANGCHAIN_AVAILABLE:
         "create_langchain_optimizer",
         "LangGraphOrchestrator",
         "create_langchain_orchestrator",
-    ])
-
-if DSPY_AVAILABLE:
-    __all__.extend([
-        "JudgeAgent",
-        "create_judge",
-        "OrchestratorAgent",
-        "create_orchestrator",
-        "OptimizerAgent",
-        "PromptVersion",
-        "OptimizationResult",
-        "create_optimizer",
     ])
