@@ -16,6 +16,11 @@ numpy>=1.24.0
 rich>=13.0.0
 click>=8.1.0
 
+# API Server (Frontend ↔ Backend bridge)
+fastapi>=0.100.0
+uvicorn>=0.20.0
+websockets>=11.0
+
 # Optional: Advanced Visualization (for future dashboard)
 # streamlit>=1.30.0
 # plotly>=5.18.0

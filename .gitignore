@@ -71,5 +71,25 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Local root test scripts and outputs
+/test_*.py
+/quick_test.py
+/final_test.py
+/test_*.txt
+
+# Local tests workspace (not committed)
+/tests/
+
+# Frontend generated artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/tsconfig.tsbuildinfo
+frontend/astra-temp/
+frontend/tsc-errors.txt
+
+# Local skills workspace
+/Skills/
+
 # Documentation builds
 docs/_build/

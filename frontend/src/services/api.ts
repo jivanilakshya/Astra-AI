@@ -1,0 +1,445 @@
+/**
+ * API service — connects to the FastAPI backend at /api/*
+ * Falls back to mock data if the backend is unreachable.
+ */
+import axios from 'axios'
+import {
+  mockQuestions, mockSessions, mockSessionDetail,
+  mockOptimizationResults, mockComparisonReport,
+  mockPromptAnalysis, mockCostPrediction, mockAskQuestion,
+  mockRouterStats, mockModels, mockCostHistory, mockDebugLog,
+} from './mockData'
+import type {
+  Question, SessionSummary, SessionDetail, OptimizationResults,
+  ComparisonReport, PromptAnalysis, CostPrediction, RouterStats,
+  ModelProfile, GeneratedOutput, OptimizationConfig,
+  PromptTemplate, TemplateAutoSelectResult, RoutingExplanation,
+  RuntimeModeInfo, QuestionTestResult, QuestionBankStats,
+} from '../types'
+import type { DebugEntry, DailyCostRecord } from './mockData'
+
+/* ─── Axios instance (Vite proxy sends /api/* → http://localhost:8000) ─── */
+const api = axios.create({ baseURL: '/api', timeout: 60_000 })
+
+/* ─── Helpers ─── */
+const delay = (ms = 400) => new Promise(r => setTimeout(r, ms + Math.random() * 300))
+
+let _backendOnline: boolean | null = null
+
+async function isBackendOnline(): Promise<boolean> {
+  if (_backendOnline !== null) return _backendOnline
+  try {
+    const res = await api.get('/health', { timeout: 3000 })
+    _backendOnline = res.data?.status === 'ok'
+  } catch {
+    _backendOnline = false
+  }
+  // Re-check every 30s
+  setTimeout(() => { _backendOnline = null }, 30_000)
+  return _backendOnline
+}
+
+/** Reset cached status (e.g. after settings change). */
+export function resetBackendStatus() { _backendOnline = null }
+
+/* ─── Questions ─── */
+export async function listQuestions(): Promise<Question[]> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/questions')
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay()
+  return mockQuestions
+}
+
+export async function addQuestion(question: string, category: string, groundTruth?: string): Promise<Question> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/questions', { question, category, groundTruth, difficulty: 'medium' })
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay()
+  const nq: Question = { id: String(mockQuestions.length + 1), question, category: category as any, groundTruth, difficulty: 'medium' }
+  mockQuestions.push(nq)
+  return nq
+}
+
+export async function deleteQuestion(id: string): Promise<void> {
+  if (await isBackendOnline()) {
+    try { await api.delete(`/questions/${id}`); return } catch { /* fall through */ }
+  }
+  await delay()
+  const idx = mockQuestions.findIndex(q => q.id === id)
+  if (idx !== -1) mockQuestions.splice(idx, 1)
+}
+
+/* ─── Sessions ─── */
+export async function listSessions(): Promise<SessionSummary[]> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/sessions')
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay()
+  return [...mockSessions].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+}
+
+export async function getSession(id: string): Promise<SessionDetail> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get(`/sessions/${id}`)
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay(600)
+  return mockSessionDetail(id)
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  if (await isBackendOnline()) {
+    try { await api.delete(`/sessions/${id}`); return } catch { /* fall through */ }
+  }
+  await delay()
+  const idx = mockSessions.findIndex(s => s.sessionId === id)
+  if (idx !== -1) mockSessions.splice(idx, 1)
+}
+
+/* ─── Optimization ─── */
+export async function startOptimization(config: OptimizationConfig): Promise<{ sessionId: string }> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/optimize/start', config)
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay(800)
+  return { sessionId: 'sess_live_' + Math.random().toString(36).slice(2, 10) }
+}
+
+export async function getOptimizationResults(sessionId: string): Promise<OptimizationResults> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get(`/optimize/${sessionId}/results`)
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay(600)
+  return mockOptimizationResults()
+}
+
+export async function stopOptimization(sessionId: string): Promise<void> {
+  if (await isBackendOnline()) {
+    try { await api.post(`/optimize/stop/${sessionId}`); return } catch { /* fall through */ }
+  }
+}
+
+/* ─── Ask ─── */
+export async function askQuestion(
+  question: string,
+  prompt?: string,
+  opts?: { model?: string; templateId?: string; category?: string; showRouting?: boolean }
+): Promise<GeneratedOutput> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/ask', {
+        question,
+        prompt,
+        model: opts?.model,
+        templateId: opts?.templateId,
+        category: opts?.category,
+        showRouting: opts?.showRouting,
+      })
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay(1500)
+  return mockAskQuestion(question, prompt)
+}
+
+/* ─── Compare ─── */
+export async function compareModels(prompt: string, models: string[]): Promise<ComparisonReport> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/compare', { prompt, models })
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay(2000)
+  return mockComparisonReport(prompt, models)
+}
+
+/* ─── Prompt Analyzer ─── */
+export async function analyzePrompt(prompt: string): Promise<PromptAnalysis> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/prompt/analyze', { prompt })
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay(800)
+  return mockPromptAnalysis(prompt)
+}
+
+export async function optimizePrompt(prompt: string): Promise<{ optimizedPrompt: string }> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/prompt/optimize', { prompt })
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay(600)
+  return { optimizedPrompt: prompt + '\n\nPlease explain your reasoning step-by-step.' }
+}
+
+/* ─── Cost ─── */
+export async function getCostPrediction(prompt: string): Promise<CostPrediction> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/cost/predict', { prompt })
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay()
+  return mockCostPrediction(prompt)
+}
+
+export async function getCostHistory(): Promise<DailyCostRecord[]> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/cost/history')
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay()
+  return mockCostHistory()
+}
+
+/* ─── Router ─── */
+export async function getRouterStats(): Promise<RouterStats> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/router/stats')
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay()
+  return mockRouterStats
+}
+
+/* ─── Models ─── */
+export async function getModels(): Promise<ModelProfile[]> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/models')
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay()
+  return mockModels
+}
+
+/* ─── Debug ─── */
+export async function getDebugLog(): Promise<DebugEntry[]> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/debug/log')
+      return data
+    } catch { /* fall through */ }
+  }
+  await delay()
+  return mockDebugLog()
+}
+
+/* ─── Settings ─── */
+export async function getSettings(): Promise<Record<string, unknown>> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/settings')
+      return data
+    } catch { /* fall through */ }
+  }
+  return {}
+}
+
+export async function updateSettings(settings: Record<string, unknown>): Promise<void> {
+  if (await isBackendOnline()) {
+    try { await api.put('/settings', settings); return } catch { /* fall through */ }
+  }
+}
+
+/* ─── Health ─── */
+export async function checkHealth(): Promise<{ status: string }> {
+  try {
+    const { data } = await api.get('/health', { timeout: 3000 })
+    return data
+  } catch {
+    return { status: 'offline' }
+  }
+}
+
+/* ─── Prompt Templates ─── */
+export async function listTemplates(): Promise<PromptTemplate[]> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/templates')
+      return data
+    } catch { /* fall through */ }
+  }
+  // Fallback mock templates
+  return [
+    { id: 'general_qa', name: 'General Q&A', description: 'Clear, structured answer', template: '', categories: [], intents: ['question'], complexity: 'moderate', output_format: 'structured', is_default: true },
+    { id: 'scientific', name: 'Scientific', description: 'Scientific explanation', template: '', categories: [], intents: ['question'], complexity: 'complex', output_format: 'structured', is_default: false },
+    { id: 'code_generation', name: 'Code Generation', description: 'Code with explanation', template: '', categories: [], intents: ['code'], complexity: 'complex', output_format: 'markdown', is_default: false },
+    { id: 'comparison', name: 'Comparison', description: 'Side-by-side analysis', template: '', categories: [], intents: ['comparison'], complexity: 'complex', output_format: 'structured', is_default: false },
+    { id: 'step_by_step', name: 'Step-by-Step', description: 'Chain-of-thought reasoning', template: '', categories: [], intents: ['reasoning'], complexity: 'complex', output_format: 'structured', is_default: false },
+    { id: 'concise', name: 'Quick & Concise', description: 'Short direct answer', template: '', categories: [], intents: ['question'], complexity: 'simple', output_format: 'structured', is_default: false },
+    { id: 'educational', name: 'Educational', description: 'Teaching-oriented', template: '', categories: [], intents: ['question'], complexity: 'complex', output_format: 'structured', is_default: false },
+    { id: 'creative', name: 'Creative / Essay', description: 'Thoughtful essay', template: '', categories: [], intents: ['creative'], complexity: 'complex', output_format: 'structured', is_default: false },
+    { id: 'code_debug', name: 'Code Debugging', description: 'Debug analysis', template: '', categories: [], intents: ['code'], complexity: 'complex', output_format: 'markdown', is_default: false },
+    { id: 'json_output', name: 'JSON Output', description: 'Structured JSON response', template: '', categories: [], intents: ['question'], complexity: 'moderate', output_format: 'json', is_default: false },
+  ]
+}
+
+export async function autoSelectTemplate(question: string, category?: string): Promise<TemplateAutoSelectResult> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/templates/auto-select', { question, category })
+      return data
+    } catch { /* fall through */ }
+  }
+  return {
+    selectedTemplate: { id: 'general_qa', name: 'General Q&A', description: '', template: '', categories: [], intents: [], complexity: 'moderate', output_format: 'structured', is_default: true },
+    detectedIntent: 'question',
+    detectedComplexity: 'moderate',
+    category: category || 'general',
+    renderedPrompt: '',
+  }
+}
+
+/* ─── Question Testing ─── */
+export async function testQuestion(
+  questionId: string,
+  opts?: { templateId?: string; model?: string; temperature?: number; maxTokens?: number }
+): Promise<QuestionTestResult> {
+  if (await isBackendOnline()) {
+    const { data } = await api.post(`/questions/${questionId}/test`, {
+      templateId: opts?.templateId,
+      model: opts?.model,
+      temperature: opts?.temperature ?? 0.7,
+      maxTokens: opts?.maxTokens ?? 500,
+    })
+    return data
+  }
+  throw new Error('Backend not available for question testing')
+}
+
+/* ─── Question Bank Stats ─── */
+export async function getQuestionStats(): Promise<QuestionBankStats> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/questions/stats')
+      return data
+    } catch { /* fall through */ }
+  }
+  return { total: 0, withGroundTruth: 0, withoutGroundTruth: 0, byCategory: {}, byDifficulty: {} }
+}
+
+/* ─── Update Question ─── */
+export async function updateQuestion(id: string, question: string, category: string, groundTruth?: string, difficulty?: string): Promise<Question> {
+  if (await isBackendOnline()) {
+    const { data } = await api.put(`/questions/${id}`, { question, category, groundTruth, difficulty: difficulty || 'medium' })
+    return data
+  }
+  throw new Error('Backend not available')
+}
+
+/* ─── Router Explain ─── */
+export async function explainRouting(question: string, category?: string): Promise<RoutingExplanation> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.post('/router/explain', { question, category })
+      return data
+    } catch { /* fall through */ }
+  }
+  return {
+    complexity: 'MODERATE',
+    recommendedModel: 'Qwen/Qwen2.5-72B-Instruct',
+    alternatives: [],
+    reasons: ['Smart router not available — using default model'],
+    costEstimate: 0,
+    latencyEstimate: 2.0,
+    tokenEstimate: 0,
+    category: category || 'general',
+  }
+}
+
+/* ─── Runtime Mode ─── */
+export async function getRuntimeMode(): Promise<RuntimeModeInfo> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get('/mode')
+      return data
+    } catch { /* fall through */ }
+  }
+  return {
+    mode: 'production',
+    description: 'Backend not available',
+    features: {
+      showDebugLogs: false, showRawPrompts: false, showChainOfThought: false,
+      showRawResponses: false, showDetailedMetrics: false, showCostBreakdown: true,
+      showFinalAnswer: true, showSummaryScore: true,
+    },
+  }
+}
+
+export async function setRuntimeMode(mode: 'developer' | 'production'): Promise<RuntimeModeInfo> {
+  if (await isBackendOnline()) {
+    const { data } = await api.post('/mode', { mode })
+    return data
+  }
+  throw new Error('Backend not available')
+}
+
+/* ─── WebSocket helper for optimization ─── */
+export function connectOptimizationWS(sessionId: string, handlers: {
+  onIterationComplete?: (log: any) => void
+  onComplete?: (results: OptimizationResults) => void
+  onError?: (err: any) => void
+  onClose?: () => void
+}): { close: () => void; stop: () => void } {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsUrl = `${protocol}//${window.location.host}/ws/optimize/${sessionId}`
+  const ws = new WebSocket(wsUrl)
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data)
+      switch (msg.type) {
+        case 'iteration_complete':
+          handlers.onIterationComplete?.(msg.data)
+          break
+        case 'complete':
+          handlers.onComplete?.(msg.data)
+          break
+        case 'error':
+          handlers.onError?.(msg.data)
+          break
+        case 'stopped':
+          handlers.onClose?.()
+          break
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  ws.onerror = () => handlers.onError?.({ message: 'WebSocket connection error' })
+  ws.onclose = () => handlers.onClose?.()
+
+  return {
+    close: () => ws.close(),
+    stop: () => { try { ws.send('stop') } catch { /* ignore */ } },
+  }
+}
