@@ -1,0 +1,14 @@
+Answer the following question clearly and concisely.
+
+Question: {question}
+
+Provide a clear, accurate answer with a step-by-step explanation.
+
+Requirements:
+- Be factually accurate
+- Explain your reasoning
+- Use simple language
+- Be concise but complete
+
+Answer:
+Please provide a concise definition of {question} including its key components and applications. Consider the following subfields: deep learning (a specialized type of ML using neural networks) or semi-supervised learning (a hybrid of supervised and unsupervised). Use bullet points or shorter paragraphs to explain the steps/types and provide a clear overview.
