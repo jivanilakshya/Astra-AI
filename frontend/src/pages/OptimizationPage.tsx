@@ -64,7 +64,7 @@ export default function OptimizationPage() {
         setPrompt(r.renderedPrompt || r.selectedTemplate.template)
       }
     }).catch(() => {})
-  }, [selectedIds.length > 0 ? selectedIds[0] : '', autoTemplate])
+  }, [selectedIds, questions, autoTemplate])
 
   const toggleQuestion = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -96,7 +96,7 @@ export default function OptimizationPage() {
         temperature,
         maxTokens,
         templateId: templateId || undefined,
-        batchSize: selectedIds.length,
+        batchSize: Math.min(selectedIds.length, 5),
       })
 
       const poll = setInterval(async () => {

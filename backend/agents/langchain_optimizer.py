@@ -57,10 +57,12 @@ class LangChainOptimizerAgent:
         self,
         model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct",
         temperature: float = 0.5,
-        enable_langsmith: bool = True
+        enable_langsmith: bool = True,
+        max_tokens: int = 900
     ):
         self.model_name = model_name
         self.temperature = temperature
+        self.max_tokens = max(300, int(max_tokens))
         self.prompt_history: List[PromptVersion] = []
         self.convergence_threshold = 0.02  # 2% improvement minimum
         
@@ -172,7 +174,7 @@ Begin your optimization:"""
                 model_name=self.model_name,
                 prompt=formatted_prompt,
                 temperature=self.temperature,
-                max_tokens=2000
+                max_tokens=self.max_tokens
             )
             
             if not result.get("success"):
@@ -409,10 +411,11 @@ Answer:"""
 def create_langchain_optimizer(
     model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct",
     temperature: float = 0.5,
-    enable_langsmith: bool = True
+    enable_langsmith: bool = True,
+    max_tokens: int = 900
 ) -> LangChainOptimizerAgent:
     """Create a LangChain Optimizer Agent"""
-    return LangChainOptimizerAgent(model_name, temperature, enable_langsmith)
+    return LangChainOptimizerAgent(model_name, temperature, enable_langsmith, max_tokens)
 
 
 # Test

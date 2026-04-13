@@ -166,10 +166,36 @@ export async function compareModels(prompt: string, models: string[]): Promise<C
     try {
       const { data } = await api.post('/compare', { prompt, models })
       return data
-    } catch { /* fall through */ }
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || 'Compare request failed'
+      return {
+        results: models.map(model => ({
+          model,
+          answer: `Error: ${msg}`,
+          explanation: `Error: ${msg}`,
+          scores: { correctness: 0, clarity: 0, reasoning: 0, relevance: 0, conciseness: 0 },
+          compositeScore: 0,
+          metadata: { tokensUsed: 0, latencyMs: 0, costUsd: 0, status: 'error', error: String(msg) },
+        })),
+        ranking: models.map((model, idx) => ({ model, rank: idx + 1, score: 0 })),
+        consistency_score: 0,
+        summary: `Backend compare failed: ${msg}`,
+      }
+    }
   }
-  await delay(2000)
-  return mockComparisonReport(prompt, models)
+  return {
+    results: models.map(model => ({
+      model,
+      answer: 'Error: Backend is offline. Start backend server to run real model comparison.',
+      explanation: 'Error: Backend is offline. Start backend server to run real model comparison.',
+      scores: { correctness: 0, clarity: 0, reasoning: 0, relevance: 0, conciseness: 0 },
+      compositeScore: 0,
+      metadata: { tokensUsed: 0, latencyMs: 0, costUsd: 0, status: 'error', error: 'backend_offline' },
+    })),
+    ranking: models.map((model, idx) => ({ model, rank: idx + 1, score: 0 })),
+    consistency_score: 0,
+    summary: 'Backend is offline. Model comparison requires live backend responses.',
+  }
 }
 
 /* ─── Prompt Analyzer ─── */

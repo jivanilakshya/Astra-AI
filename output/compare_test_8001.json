@@ -1,0 +1,58 @@
+{
+    "results":  [
+                    {
+                        "model":  "meta-llama/Llama-3.2-1B-Instruct",
+                        "answer":  "The sky appears blue because of a phenomenon called Rayleigh scattering, where shorter (blue) wavelengths of sunlight are scattered more than longer (red) wavelengths by the tiny molecules of gases in the atmosphere. This scattering effect is more pronounced in the atmosphere\u0027s lower layers, giving the sky its blue color. The amount of scattering depends on the concentration and type of gases present, but atmospheric conditions are the primary reason for the blue color.",
+                        "explanation":  "The sky appears blue because of a phenomenon called Rayleigh scattering, where shorter (blue) wavelengths of sunlight are scattered more than longer (red) wavelengths by the tiny molecules of gases in the atmosphere. This scattering effect is more pronounced in the atmosphere\u0027s lower layers, giving the sky its blue color. The amount of scattering depends on the concentration and type of gases present, but atmospheric conditions are the primary reason for the blue color.",
+                        "scores":  {
+                                       "correctness":  7.5,
+                                       "clarity":  7.7,
+                                       "reasoning":  6.9,
+                                       "relevance":  7.8,
+                                       "conciseness":  4.4
+                                   },
+                        "compositeScore":  7.1,
+                        "metadata":  {
+                                         "tokensUsed":  126,
+                                         "latencyMs":  1272.50075340271,
+                                         "costUsd":  0.0,
+                                         "status":  "success",
+                                         "error":  null
+                                     }
+                    },
+                    {
+                        "model":  "meta-llama/Meta-Llama-3-8B-Instruct",
+                        "answer":  "The sky appears blue due to a phenomenon called Rayleigh scattering, where shorter wavelengths of light (like blue and violet) are scattered more than longer wavelengths (like red and orange) by the tiny molecules of gases in the atmosphere. This scattering effect gives the sky its blue color. As sunlight enters Earth\u0027s atmosphere, it scatters in all directions, making the blue light more visible to our eyes.",
+                        "explanation":  "The sky appears blue due to a phenomenon called Rayleigh scattering, where shorter wavelengths of light (like blue and violet) are scattered more than longer wavelengths (like red and orange) by the tiny molecules of gases in the atmosphere. This scattering effect gives the sky its blue color. As sunlight enters Earth\u0027s atmosphere, it scatters in all directions, making the blue light more visible to our eyes.",
+                        "scores":  {
+                                       "correctness":  7.1,
+                                       "clarity":  7.9,
+                                       "reasoning":  5.5,
+                                       "relevance":  7.2,
+                                       "conciseness":  4.0
+                                   },
+                        "compositeScore":  6.6,
+                        "metadata":  {
+                                         "tokensUsed":  111,
+                                         "latencyMs":  2160.991430282593,
+                                         "costUsd":  0.0,
+                                         "status":  "success",
+                                         "error":  null
+                                     }
+                    }
+                ],
+    "ranking":  [
+                    {
+                        "model":  "meta-llama/Llama-3.2-1B-Instruct",
+                        "rank":  1,
+                        "score":  7.1
+                    },
+                    {
+                        "model":  "meta-llama/Meta-Llama-3-8B-Instruct",
+                        "rank":  2,
+                        "score":  6.6
+                    }
+                ],
+    "consistency_score":  0.4305555555555556,
+    "summary":  "Compared 2 models  |  Consistency: 43%\n  #1  meta-llama/Llama-3.2-1B-Instruct               score=0.82  [OK]\n  #2  meta-llama/Meta-Llama-3-8B-Instruct            score=0.66  [OK]\nBest model: meta-llama/Llama-3.2-1B-Instruct"
+}

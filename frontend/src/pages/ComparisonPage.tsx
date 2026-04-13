@@ -1,24 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { GitCompare, Plus, X, Loader2, Trophy, Medal, Award } from 'lucide-react'
 import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
-import ScoreBar from '../components/ui/ScoreBar'
-import CriteriaBarChart from '../components/charts/CriteriaBarChart'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
-import { compareModels } from '../services/api'
+import { compareModels, getModels } from '../services/api'
 import { scoreToColor } from '../utils/formatters'
 import { CRITERIA_LABELS } from '../utils/constants'
-import type { ComparisonReport, ComparisonResult } from '../types'
+import type { ComparisonReport, ModelProfile } from '../types'
 
-const AVAILABLE_MODELS = [
-  'mistralai/Mistral-7B-Instruct-v0.3',
-  'google/gemma-2-2b-it',
-  'microsoft/Phi-3-mini-4k-instruct',
+const FALLBACK_MODELS = [
+  'meta-llama/Meta-Llama-3-8B-Instruct',
+  'Qwen/Qwen2.5-7B-Instruct',
   'meta-llama/Llama-3.2-3B-Instruct',
-  'Qwen/Qwen2.5-3B-Instruct',
-  'HuggingFaceTB/SmolLM2-1.7B-Instruct',
-  'TinyLlama/TinyLlama-1.1B-Chat-v1.0',
+  'meta-llama/Llama-3.2-1B-Instruct',
 ]
 
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }
@@ -26,12 +21,37 @@ const podiumIcons = [Trophy, Medal, Award]
 
 export default function ComparisonPage() {
   const [prompt, setPrompt] = useState('Answer the following question clearly.\n\nQuestion: {question}\n\nAnswer:')
-  const [selectedModels, setSelectedModels] = useState<string[]>([AVAILABLE_MODELS[0], AVAILABLE_MODELS[1]])
+  const [availableModels, setAvailableModels] = useState<string[]>(FALLBACK_MODELS)
+  const [selectedModels, setSelectedModels] = useState<string[]>([FALLBACK_MODELS[0], FALLBACK_MODELS[1]])
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<ComparisonReport | null>(null)
 
+  useEffect(() => {
+    getModels()
+      .then((models: ModelProfile[]) => {
+        const backendAvailable = models
+          .filter(m => m.is_available && m.status === 'available')
+          .map(m => m.id)
+
+        if (backendAvailable.length >= 2) {
+          setAvailableModels(backendAvailable)
+          setSelectedModels(prev => {
+            const valid = prev.filter(m => backendAvailable.includes(m))
+            const seeded = [
+              ...valid,
+              ...backendAvailable.filter(m => !valid.includes(m)),
+            ]
+            return seeded.slice(0, Math.max(2, Math.min(4, seeded.length)))
+          })
+        }
+      })
+      .catch(() => {
+        // Keep fallback models when backend list is not available.
+      })
+  }, [])
+
   const addModel = () => {
-    const available = AVAILABLE_MODELS.filter(m => !selectedModels.includes(m))
+    const available = availableModels.filter(m => !selectedModels.includes(m))
     if (available.length) setSelectedModels([...selectedModels, available[0]])
   }
 
@@ -40,14 +60,18 @@ export default function ComparisonPage() {
   }
 
   const changeModel = (idx: number, val: string) => {
+    if (selectedModels.includes(val) && selectedModels[idx] !== val) return
     setSelectedModels(selectedModels.map((m, i) => (i === idx ? val : m)))
   }
 
   const handleCompare = async () => {
     setLoading(true)
-    const res = await compareModels(prompt, selectedModels)
-    setReport(res)
-    setLoading(false)
+    try {
+      const res = await compareModels(prompt, selectedModels)
+      setReport(res)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const modelShort = (m: string) => m.split('/').pop()?.split('-')[0] ?? m
@@ -83,6 +107,7 @@ export default function ComparisonPage() {
           <Card className="mb-8">
             <div className="flex items-center justify-between mb-3">
               <h2 className="section-title">Models ({selectedModels.length})</h2>
+              <span className="text-xs text-text-muted font-mono">Available: {availableModels.length}</span>
               <button onClick={addModel} disabled={selectedModels.length >= 5} className="btn-ghost text-xs disabled:opacity-40">
                 <Plus size={12} /> Add Model
               </button>
@@ -91,7 +116,7 @@ export default function ComparisonPage() {
               {selectedModels.map((m, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <select value={m} onChange={e => changeModel(i, e.target.value)} className="input-base flex-1">
-                    {AVAILABLE_MODELS.map(am => (
+                    {availableModels.map(am => (
                       <option key={am} value={am} disabled={selectedModels.includes(am) && am !== m}>{am}</option>
                     ))}
                   </select>
@@ -107,6 +132,17 @@ export default function ComparisonPage() {
         {/* Results */}
         {report && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+            <Card className="mb-6">
+              <h2 className="section-title mb-3">Comparison Summary</h2>
+              <p className="text-sm text-text-secondary whitespace-pre-wrap">{report.summary}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <Badge variant="muted">Consistency</Badge>
+                <span className="font-mono text-sm" style={{ color: scoreToColor((report.consistency_score || 0) * 10) }}>
+                  {(report.consistency_score * 100).toFixed(0)}%
+                </span>
+              </div>
+            </Card>
+
             {/* Ranking */}
             <Card className="mb-6">
               <h2 className="section-title mb-4">Ranking</h2>
@@ -173,11 +209,24 @@ export default function ComparisonPage() {
                   <div key={r.model} className="border border-border rounded-card p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-mono text-sm text-text-primary">{modelShort(r.model)}</span>
-                      <Badge variant={r.compositeScore >= 7 ? 'success' : r.compositeScore >= 5 ? 'warn' : 'danger'}>
-                        {r.compositeScore.toFixed(1)}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {r.metadata?.status === 'error' && <Badge variant="danger">error</Badge>}
+                        <Badge variant={r.compositeScore >= 7 ? 'success' : r.compositeScore >= 5 ? 'warn' : 'danger'}>
+                          {r.compositeScore.toFixed(1)}
+                        </Badge>
+                      </div>
                     </div>
-                    <p className="text-sm text-text-secondary">{r.answer}</p>
+                    <div className="flex flex-wrap items-center gap-3 mb-2 text-xs font-mono text-text-muted">
+                      <span>Latency: {(r.metadata?.latencyMs ?? 0).toFixed(0)}ms</span>
+                      <span>Tokens: {r.metadata?.tokensUsed ?? 0}</span>
+                      <span>Cost: ${(r.metadata?.costUsd ?? 0).toFixed(6)}</span>
+                    </div>
+                    {r.metadata?.error && (
+                      <p className="text-xs text-red-400 mb-2 break-words">Reason: {r.metadata.error}</p>
+                    )}
+                    <p className="text-sm text-text-secondary whitespace-pre-wrap break-words max-h-56 overflow-auto">
+                      {r.answer?.trim() || r.explanation?.trim() || 'No response returned from backend for this model.'}
+                    </p>
                   </div>
                 ))}
               </div>

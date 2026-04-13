@@ -12,6 +12,8 @@ import json
 import asyncio
 import logging
 import traceback
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -702,13 +704,45 @@ async def compare_models(body: CompareIn):
     """Compare multiple models on the same prompt."""
     await backend.ensure_initialized()
 
-    if backend.multi_model_engine is not None:
+    # Normalize and validate selected models.
+    from agents.huggingface_provider import AVAILABLE_MODELS
+    supported_ids = {m["id"] for m in AVAILABLE_MODELS}
+    requested_models: List[str] = []
+    for model_name in body.models:
+        if model_name in supported_ids and model_name not in requested_models:
+            requested_models.append(model_name)
+    unsupported_models = [m for m in body.models if m not in supported_ids]
+
+    if len(requested_models) < 1:
+        raise HTTPException(400, "No supported models selected. Choose models from /api/models.")
+
+    # MultiModelEngine is optional and slower (sequential calls). Keep it opt-in.
+    use_engine = (
+        backend.multi_model_engine is not None
+        and os.getenv("ASTRA_COMPARE_USE_ENGINE", "false").lower() == "true"
+    )
+    if use_engine:
         try:
             report = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: backend.multi_model_engine.compare(body.prompt, body.models)
+                None, lambda: backend.multi_model_engine.compare(body.prompt, requested_models)
             )
             report_dict = report.to_dict() if hasattr(report, "to_dict") else report
-            return _format_comparison_report(report_dict, body.prompt, body.models)
+            formatted = _format_comparison_report(report_dict, body.prompt, requested_models)
+            if unsupported_models:
+                for m in unsupported_models:
+                    formatted["results"].append({
+                        "model": m,
+                        "answer": f"Error: Model '{m}' is not supported by this backend.",
+                        "explanation": f"Error: Model '{m}' is not supported by this backend.",
+                        "scores": {"correctness": 0.0, "clarity": 0.0, "reasoning": 0.0, "relevance": 0.0, "conciseness": 0.0},
+                        "compositeScore": 0.0,
+                        "metadata": {"tokensUsed": 0, "latencyMs": 0, "costUsd": 0, "status": "error", "error": "unsupported_model"},
+                    })
+                formatted["results"].sort(key=lambda r: r["compositeScore"], reverse=True)
+                formatted["ranking"] = [{"model": r["model"], "rank": i + 1, "score": r["compositeScore"]} for i, r in enumerate(formatted["results"])]
+                formatted["summary"] = _comparison_summary(formatted["results"])
+                formatted["consistency_score"] = _comparison_consistency(formatted["results"])
+            return formatted
         except Exception as e:
             logger.warning(f"MultiModelEngine compare failed: {e}, falling back to manual")
 
@@ -716,44 +750,110 @@ async def compare_models(body: CompareIn):
     if backend.provider is None:
         raise HTTPException(503, "No LLM provider available")
 
-    results = []
-    for model_name in body.models:
+    def _query_model_fallback(model_name: str) -> dict:
         try:
-            result = await asyncio.get_running_loop().run_in_executor(
-                None,
-                lambda mn=model_name: backend.provider.generate(
-                    model_name=mn, prompt=body.prompt, temperature=0.7, max_tokens=500,
-                )
+            result = backend.provider.generate(
+                model_name=model_name,
+                prompt=body.prompt,
+                temperature=0.7,
+                max_tokens=500,
             )
             text = result.get("text", "") if isinstance(result, dict) else str(result)
-            latency = result.get("latency_seconds", 0) if isinstance(result, dict) else 0
+            success = bool(result.get("success", False)) if isinstance(result, dict) else bool(text)
+            error = result.get("error") if isinstance(result, dict) else None
+            latency_ms = (result.get("latency_seconds", 0) if isinstance(result, dict) else 0) * 1000
+
+            if not text.strip() and error:
+                text = f"Error: {error}"
+            if not text.strip() and not success:
+                text = "Error: No response returned by model."
+                error = error or "empty_response"
+            if not text.strip() and success:
+                text = "No response returned by model."
+                success = False
+                error = error or "empty_response"
+
+            score_pack = _score_comparison_response(body.prompt, text, success, latency_ms)
             tokens_in = max(1, len(body.prompt) // 4)
             tokens_out = max(1, len(text) // 4)
-            results.append({
+
+            return {
                 "model": model_name,
                 "answer": text,
                 "explanation": text,
-                "scores": {"correctness": 7.0, "clarity": 7.0, "reasoning": 7.0, "relevance": 7.0, "conciseness": 7.0},
-                "compositeScore": 7.0,
-                "metadata": {"tokensUsed": tokens_in + tokens_out, "latencyMs": latency * 1000, "costUsd": 0.0},
-            })
+                "scores": score_pack["scores"],
+                "compositeScore": score_pack["compositeScore"],
+                "metadata": {
+                    "tokensUsed": tokens_in + tokens_out,
+                    "latencyMs": latency_ms,
+                    "costUsd": 0.0,
+                    "status": "success" if success else "error",
+                    "error": error,
+                },
+            }
         except Exception as e:
-            results.append({
+            text = f"Error: {str(e)}"
+            score_pack = _score_comparison_response(body.prompt, text, False, 0)
+            return {
                 "model": model_name,
-                "answer": f"Error: {str(e)}",
-                "explanation": "",
-                "scores": {"correctness": 0, "clarity": 0, "reasoning": 0, "relevance": 0, "conciseness": 0},
-                "compositeScore": 0,
-                "metadata": {"tokensUsed": 0, "latencyMs": 0, "costUsd": 0},
-            })
+                "answer": text,
+                "explanation": text,
+                "scores": score_pack["scores"],
+                "compositeScore": score_pack["compositeScore"],
+                "metadata": {"tokensUsed": 0, "latencyMs": 0, "costUsd": 0, "status": "error", "error": str(e)},
+            }
+
+    results = []
+    max_workers = min(4, len(requested_models)) if requested_models else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(_query_model_fallback, model_name) for model_name in requested_models]
+        for fut in as_completed(futures):
+            results.append(fut.result())
+
+    for m in unsupported_models:
+        results.append({
+            "model": m,
+            "answer": f"Error: Model '{m}' is not supported by this backend.",
+            "explanation": f"Error: Model '{m}' is not supported by this backend.",
+            "scores": {"correctness": 0.0, "clarity": 0.0, "reasoning": 0.0, "relevance": 0.0, "conciseness": 0.0},
+            "compositeScore": 0.0,
+            "metadata": {"tokensUsed": 0, "latencyMs": 0, "costUsd": 0, "status": "error", "error": "unsupported_model"},
+        })
 
     results.sort(key=lambda r: r["compositeScore"], reverse=True)
     return {
         "results": results,
         "ranking": [{"model": r["model"], "rank": i + 1, "score": r["compositeScore"]} for i, r in enumerate(results)],
-        "consistency_score": 0.75,
-        "summary": f"{results[0]['model'] if results else 'N/A'} performed best." if results else "No results.",
+        "consistency_score": _comparison_consistency(results),
+        "summary": _comparison_summary(results),
     }
+
+
+def _comparison_consistency(results: List[Dict[str, Any]]) -> float:
+    """Compute consistency score from score spread (1=high agreement, 0=low)."""
+    vals = [float(r.get("compositeScore", 0.0)) for r in results if float(r.get("compositeScore", 0.0)) > 0]
+    if len(vals) < 2:
+        return 0.0
+    mean = sum(vals) / len(vals)
+    variance = sum((v - mean) ** 2 for v in vals) / len(vals)
+    std = variance ** 0.5
+    consistency = 1.0 - min(std / 3.0, 1.0)
+    return round(max(0.0, min(1.0, consistency)), 2)
+
+
+def _comparison_summary(results: List[Dict[str, Any]]) -> str:
+    """Create a human-readable summary for comparison results."""
+    if not results:
+        return "No comparison results were generated."
+    ok = [r for r in results if r.get("metadata", {}).get("status") == "success"]
+    failed = [r for r in results if r.get("metadata", {}).get("status") != "success"]
+    best = max(ok, key=lambda r: float(r.get("compositeScore", 0.0))) if ok else None
+    if best:
+        return (
+            f"{best['model']} performed best with {best['compositeScore']:.1f}/10. "
+            f"Successful models: {len(ok)}/{len(results)}."
+        )
+    return f"All model requests failed ({len(failed)}/{len(results)}). Check model availability and API key."
 
 
 def _format_comparison_report(report_dict: dict, prompt: str, models: List[str]) -> dict:
@@ -762,16 +862,33 @@ def _format_comparison_report(report_dict: dict, prompt: str, models: List[str])
     results = []
     for r in raw_results:
         if isinstance(r, dict):
+            model_name = r.get("model_name", r.get("model", ""))
+            response_text = r.get("response_text", r.get("answer", ""))
+            success = bool(r.get("success", True))
+            error = r.get("error")
+            if not response_text.strip() and error:
+                response_text = f"Error: {error}"
+            if not response_text.strip() and success:
+                response_text = "No response returned by model."
+                success = False
+
+            latency_ms = (r.get("latency_seconds", 0) or 0) * 1000
+            score_pack = _score_comparison_response(prompt, response_text, success, latency_ms)
+            scores = score_pack["scores"]
+            composite = score_pack["compositeScore"]
+
             results.append({
-                "model": r.get("model_name", r.get("model", "")),
-                "answer": r.get("response_text", r.get("answer", "")),
-                "explanation": r.get("response_text", r.get("explanation", "")),
-                "scores": r.get("scores", {"correctness": 7, "clarity": 7, "reasoning": 7, "relevance": 7, "conciseness": 7}),
-                "compositeScore": r.get("composite_score", r.get("compositeScore", 7.0)),
+                "model": model_name,
+                "answer": response_text,
+                "explanation": response_text,
+                "scores": scores,
+                "compositeScore": composite,
                 "metadata": {
                     "tokensUsed": r.get("input_tokens_est", 0) + r.get("output_tokens_est", 0),
-                    "latencyMs": r.get("latency_seconds", 0) * 1000,
+                    "latencyMs": latency_ms,
                     "costUsd": r.get("cost_estimate", 0),
+                    "status": "success" if success else "error",
+                    "error": error,
                 },
             })
 
@@ -779,9 +896,57 @@ def _format_comparison_report(report_dict: dict, prompt: str, models: List[str])
     return {
         "results": results,
         "ranking": [{"model": r["model"], "rank": i + 1, "score": r["compositeScore"]} for i, r in enumerate(results)],
-        "consistency_score": report_dict.get("consistency_score", 0.75),
-        "summary": report_dict.get("summary", f"Comparison of {len(results)} models complete."),
+        "consistency_score": _comparison_consistency(results),
+        "summary": _comparison_summary(results),
     }
+
+
+def _score_comparison_response(prompt: str, response_text: str, success: bool, latency_ms: float) -> dict:
+    """Heuristic scoring for comparison responses when judge scores are unavailable."""
+    if not success or not response_text.strip() or response_text.lower().startswith("error:"):
+        zero = {"correctness": 0.0, "clarity": 0.0, "reasoning": 0.0, "relevance": 0.0, "conciseness": 0.0}
+        return {"scores": zero, "compositeScore": 0.0}
+
+    prompt_words = set(re.findall(r"\b\w+\b", prompt.lower()))
+    response_words = re.findall(r"\b\w+\b", response_text.lower())
+    response_word_set = set(response_words)
+    word_count = len(response_words)
+
+    overlap = (len(prompt_words & response_word_set) / max(1, len(prompt_words))) if prompt_words else 0.0
+
+    sentences = [s for s in re.split(r"[.!?]+\s*", response_text.strip()) if s]
+    avg_sentence_words = word_count / max(1, len(sentences))
+
+    reasoning_markers = ["because", "therefore", "however", "for example", "first", "second", "finally", "thus", "so"]
+    reasoning_hits = sum(1 for marker in reasoning_markers if marker in response_text.lower())
+
+    latency_penalty = min(max(latency_ms, 0.0) / 25000.0, 1.0)
+
+    correctness = 6.0 + (overlap * 3.0) - (latency_penalty * 0.4)
+    clarity = 8.5 - (abs(avg_sentence_words - 18) * 0.12)
+    reasoning = 5.5 + (min(reasoning_hits, 6) * 0.7)
+    relevance = 5.5 + (overlap * 4.5)
+
+    ideal_words = 170
+    conciseness = 10.0 - min(abs(word_count - ideal_words) / max(ideal_words, 1) * 10.0, 7.5)
+
+    scores = {
+        "correctness": round(min(10.0, max(0.0, correctness)), 1),
+        "clarity": round(min(10.0, max(0.0, clarity)), 1),
+        "reasoning": round(min(10.0, max(0.0, reasoning)), 1),
+        "relevance": round(min(10.0, max(0.0, relevance)), 1),
+        "conciseness": round(min(10.0, max(0.0, conciseness)), 1),
+    }
+
+    composite = (
+        0.40 * scores["correctness"]
+        + 0.20 * scores["clarity"]
+        + 0.20 * scores["reasoning"]
+        + 0.10 * scores["relevance"]
+        + 0.10 * scores["conciseness"]
+    )
+
+    return {"scores": scores, "compositeScore": round(composite, 1)}
 
 
 # ── Sessions ─────────────────────────────────────────────────────────────────
@@ -896,8 +1061,10 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
     if session is None:
         return
 
-    # Cap questions to avoid extremely long runs (each question = 2 API calls per iteration)
-    max_q = min(len(questions), config.batchSize or 5)
+    # Hard cap questions to avoid very long runs.
+    # Each question triggers generation + evaluation per iteration.
+    hard_cap = 5
+    max_q = min(len(questions), config.batchSize or hard_cap, hard_cap)
     questions = questions[:max_q]
     session["questionsCount"] = len(questions)
 
@@ -925,6 +1092,8 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
                 enable_langsmith=False,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                judge_max_tokens=500,
+                optimizer_max_tokens=900,
             )
 
             initial_prompt = config.initialPrompt

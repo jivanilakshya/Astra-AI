@@ -6,6 +6,7 @@ Uses LangGraph for optimization loop management + LangSmith observability
 import os
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Any, TypedDict, Annotated
 from datetime import datetime
 from dataclasses import dataclass, asdict, field
@@ -103,11 +104,14 @@ class LangGraphOrchestrator:
         convergence_threshold: float = 8.5,
         enable_langsmith: bool = True,
         temperature: float = 0.7,
-        max_tokens: int = 500
+        max_tokens: int = 500,
+        judge_max_tokens: int = 500,
+        optimizer_max_tokens: int = 900
     ):
         self.max_iterations = max_iterations
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.parallel_workers = max(1, int(os.getenv("ASTRA_PARALLEL_WORKERS", "3")))
         self.convergence_threshold = convergence_threshold
         self.iteration_logs: List[IterationLog] = []
         
@@ -135,13 +139,15 @@ class LangGraphOrchestrator:
         # Judge (LangChain)
         self.judge = create_langchain_judge(
             model_name=judge_model,
-            enable_langsmith=enable_langsmith and tracing_enabled
+            enable_langsmith=enable_langsmith and tracing_enabled,
+            max_tokens=judge_max_tokens
         )
         
         # Optimizer (LangChain)
         self.optimizer = create_langchain_optimizer(
             model_name=optimizer_model,
-            enable_langsmith=enable_langsmith and tracing_enabled
+            enable_langsmith=enable_langsmith and tracing_enabled,
+            max_tokens=optimizer_max_tokens
         )
         
         # Build LangGraph workflow
@@ -190,92 +196,142 @@ class LangGraphOrchestrator:
         iter_num = state['iteration'] + 1
         max_iter = state['max_iterations']
         print(f"\n  Iteration {iter_num}/{max_iter}: Generating answers... [{elapsed:.0f}s elapsed]")
-        
-        generated_outputs = []
-        
-        for i, question in enumerate(state["questions"]):
+
+        questions = state["questions"]
+        generated_outputs: List[Optional[Dict[str, Any]]] = [None] * len(questions)
+
+        def _generate_one(idx: int, question: str) -> tuple[int, Dict[str, Any]]:
             try:
-                # Format prompt with question
                 formatted_prompt = state["current_prompt"].replace("{question}", question)
-                
-                # Generate using HuggingFace
                 result = self.generator.generate(
                     model_name=self.generator_model,
                     prompt=formatted_prompt,
                     temperature=self.temperature,
                     max_tokens=self.max_tokens
                 )
-                
-                generated_outputs.append({
+                return idx, {
                     "question": question,
                     "answer": result.get("text", ""),
-                    "explanation": result.get("text", ""),  # Same as answer for now
+                    "explanation": result.get("text", ""),
                     "metadata": {
-                        "latency_ms": result.get("latency", 0) * 1000,
+                        "latency_ms": result.get("latency_seconds", result.get("latency", 0)) * 1000,
                         "timestamp": datetime.now().isoformat(),
                         "status": "success" if result.get("success") else "error"
                     }
-                })
-                
-                print(f"    [OK] Generated answer {i+1}/{len(state['questions'])}")
-                
+                }
             except Exception as e:
-                print(f"    [ERROR] Generation error for question {i+1}: {e}")
-                generated_outputs.append({
+                return idx, {
                     "question": question,
                     "answer": "",
                     "explanation": f"Generation failed: {str(e)}",
                     "error": str(e),
                     "metadata": {"status": "error"}
-                })
-        
-        state["generated_outputs"] = generated_outputs
+                }
+
+        max_workers = min(self.parallel_workers, len(questions)) if questions else 1
+        if len(questions) <= 1:
+            for i, q in enumerate(questions):
+                idx, output = _generate_one(i, q)
+                generated_outputs[idx] = output
+                if output.get("metadata", {}).get("status") == "success":
+                    print(f"    [OK] Generated answer {i+1}/{len(questions)}")
+                else:
+                    print(f"    [ERROR] Generation error for question {i+1}")
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [pool.submit(_generate_one, i, q) for i, q in enumerate(questions)]
+                completed = 0
+                for fut in as_completed(futures):
+                    idx, output = fut.result()
+                    generated_outputs[idx] = output
+                    completed += 1
+                    if output.get("metadata", {}).get("status") == "success":
+                        print(f"    [OK] Generated answer {completed}/{len(questions)}")
+                    else:
+                        print(f"    [ERROR] Generation failed ({completed}/{len(questions)})")
+
+        state["generated_outputs"] = [
+            out if out is not None else {
+                "question": questions[i],
+                "answer": "",
+                "explanation": "Generation failed: missing concurrent result",
+                "error": "missing_result",
+                "metadata": {"status": "error"}
+            }
+            for i, out in enumerate(generated_outputs)
+        ]
         return state
     
     def _evaluate_node(self, state: OptimizationState) -> OptimizationState:
         """Evaluate generated answers with detailed per-question tracking"""
         num_outputs = len(state['generated_outputs'])
         print(f"\n  Evaluating {num_outputs} answers...")
-        
-        evaluations = []
-        
-        for i, output in enumerate(state["generated_outputs"]):
+
+        outputs = state["generated_outputs"]
+        evaluations: List[Optional[Dict[str, Any]]] = [None] * num_outputs
+
+        def _evaluate_one(idx: int, output: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
             try:
-                # Skip error outputs
                 if output.get("metadata", {}).get("status") == "error" or not output.get("answer"):
-                    print(f"    [SKIP] Question {i+1}: empty answer")
-                    evaluations.append({
+                    return idx, {
                         "scores": {k: 0.0 for k in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]},
                         "composite_score": 0.0,
                         "feedback": {},
                         "suggestions": ["Answer was empty or failed to generate"],
                         "flags": ["empty_answer"],
                         "skipped": True
-                    })
-                    continue
-                
+                    }
                 eval_result = self.judge.evaluate(
                     question=output["question"],
                     answer=output.get("answer", ""),
                     explanation=output.get("explanation", "")
                 )
-                evaluations.append(eval_result)
-                
-                score = eval_result['composite_score']
-                grade = "A" if score >= 8 else "B" if score >= 6 else "C" if score >= 4 else "D"
-                print(f"    [OK] Q{i+1}: {score:.1f}/10 ({grade})  {output['question'][:45]}...")
-                
-                # Submit feedback to LangSmith if available
-                self._submit_langsmith_feedback(output, eval_result, state['iteration'] + 1)
-                
+                return idx, eval_result
             except Exception as e:
-                print(f"    [ERROR] Evaluation error Q{i+1}: {e}")
-                evaluations.append({
+                return idx, {
                     "scores": {k: 0.0 for k in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]},
                     "composite_score": 0.0,
                     "error": str(e),
                     "flags": ["evaluation_error"]
-                })
+                }
+
+        max_workers = min(self.parallel_workers, num_outputs) if num_outputs else 1
+        if num_outputs <= 1:
+            for i, out in enumerate(outputs):
+                idx, eval_result = _evaluate_one(i, out)
+                evaluations[idx] = eval_result
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = [pool.submit(_evaluate_one, i, out) for i, out in enumerate(outputs)]
+                for fut in as_completed(futures):
+                    idx, eval_result = fut.result()
+                    evaluations[idx] = eval_result
+
+        for i, (output, eval_result) in enumerate(zip(outputs, evaluations)):
+            if eval_result is None:
+                print(f"    [ERROR] Evaluation missing for Q{i+1}")
+                continue
+            if eval_result.get("skipped"):
+                print(f"    [SKIP] Question {i+1}: empty answer")
+                continue
+            if eval_result.get("error"):
+                print(f"    [ERROR] Evaluation error Q{i+1}: {eval_result.get('error')}")
+                continue
+            score = eval_result.get('composite_score', 0)
+            grade = "A" if score >= 8 else "B" if score >= 6 else "C" if score >= 4 else "D"
+            print(f"    [OK] Q{i+1}: {score:.1f}/10 ({grade})  {output.get('question', '')[:45]}...")
+            self._submit_langsmith_feedback(output, eval_result, state['iteration'] + 1)
+
+        evaluations = [
+            e if e is not None else {
+                "scores": {k: 0.0 for k in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]},
+                "composite_score": 0.0,
+                "feedback": {},
+                "suggestions": ["Evaluation missing"],
+                "flags": ["evaluation_missing"]
+            }
+            for e in evaluations
+        ]
         
         # Calculate average (only for non-skipped, non-error evaluations)
         valid_evals = [e for e in evaluations if e["composite_score"] > 0 and not e.get("skipped")]
@@ -646,7 +702,9 @@ def create_langchain_orchestrator(
     convergence_threshold: float = 8.5,
     enable_langsmith: bool = True,
     temperature: float = 0.7,
-    max_tokens: int = 500
+    max_tokens: int = 500,
+    judge_max_tokens: int = 500,
+    optimizer_max_tokens: int = 900
 ) -> LangGraphOrchestrator:
     """Create a LangGraph Orchestrator"""
     return LangGraphOrchestrator(
@@ -657,7 +715,9 @@ def create_langchain_orchestrator(
         convergence_threshold=convergence_threshold,
         enable_langsmith=enable_langsmith,
         temperature=temperature,
-        max_tokens=max_tokens
+        max_tokens=max_tokens,
+        judge_max_tokens=judge_max_tokens,
+        optimizer_max_tokens=optimizer_max_tokens
     )
 
 

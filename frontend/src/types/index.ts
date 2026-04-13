@@ -303,7 +303,7 @@ export interface ComparisonResult {
   explanation: string
   scores: Scores
   compositeScore: number
-  metadata: { tokensUsed?: number; latencyMs?: number; costUsd?: number }
+  metadata: { tokensUsed?: number; latencyMs?: number; costUsd?: number; status?: string; error?: string }
 }
 
 export interface ComparisonReport {

@@ -50,10 +50,12 @@ class LangChainJudgeAgent:
         self,
         model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct",
         temperature: float = 0.3,
-        enable_langsmith: bool = True
+        enable_langsmith: bool = True,
+        max_tokens: int = 500
     ):
         self.model_name = model_name
         self.temperature = temperature
+        self.max_tokens = max(150, int(max_tokens))
         self.criteria_weights = {
             "correctness": 0.40,
             "clarity": 0.20,
@@ -256,7 +258,7 @@ Evaluate this response:"""
                 model_name=self.model_name,
                 prompt=formatted_prompt,
                 temperature=self.temperature,
-                max_tokens=800
+                max_tokens=self.max_tokens
             )
             
             if not response.get("success"):
@@ -315,10 +317,11 @@ Evaluate this response:"""
 def create_langchain_judge(
     model_name: str = "meta-llama/Meta-Llama-3-8B-Instruct",
     temperature: float = 0.3,
-    enable_langsmith: bool = True
+    enable_langsmith: bool = True,
+    max_tokens: int = 500
 ) -> LangChainJudgeAgent:
     """Create a LangChain Judge Agent"""
-    return LangChainJudgeAgent(model_name, temperature, enable_langsmith)
+    return LangChainJudgeAgent(model_name, temperature, enable_langsmith, max_tokens)
 
 
 # Test
