@@ -1,0 +1,15 @@
+{
+  "summary": {
+    "total_cost": 0.0,
+    "total_operations": 0,
+    "by_agent": {},
+    "by_model": {},
+    "budget_status": "no_data"
+  },
+  "recommendations": [
+    "No usage data available for recommendations"
+  ],
+  "usage_records": [],
+  "alerts": [],
+  "export_timestamp": "2026-02-23T15:09:41.556223"
+}

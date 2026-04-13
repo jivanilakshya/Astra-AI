@@ -1,0 +1,14 @@
+Answer the following question clearly and concisely.
+
+Question: {question}
+
+Provide a clear, accurate answer that explains the key concepts involved.
+
+Requirements:
+- Be factually accurate
+- Explain the key concepts involved in simple language
+- Use concise language to convey the main points
+
+Define any key terms that may be unfamiliar to non-expert audiences.
+
+Answer:
