@@ -26,6 +26,18 @@ Production Ready:     ███████████████████�
 
 ## 🚀 Updates History
 
+### Frontend UI Fixes (May 4, 2026) - In Progress
+**Completed:**
+- Optimization page: real-time progress updates via progress polling, WS progress events, and local fallback timing.
+- Costs page: reload-safe caching, explicit loading/error/empty states, and scaffold fallback for charts.
+- Costs page: cost chart Y-axis baseline tuned for zero-value visibility.
+- Analytics page: Score Distribution chart implemented with Recharts, including fallback data + empty state.
+- Graph polish: axis labels, tooltips, and legends applied across core charts (line, bar, radar, cost timeline).
+- Dashboard upgrades: expanded KPI grid, quick insights, activity feed, and improved layout hierarchy.
+
+**Remaining:**
+All steps complete.
+
 ### Latest: LangChain/LangGraph Pipeline (Feb 19, 2026)
 > Full pipeline migration from DSPy to LangChain. Real end-to-end scores achieved (7.80-8.32/10). See **Phase 5** below for details.
 

@@ -42,6 +42,7 @@ export default function OptimizationPage() {
   const [etaSec, setEtaSec] = useState<number | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const wsRef = useRef<{ close: () => void; stop: () => void } | null>(null)
+  const startAtRef = useRef<number | null>(null)
 
   // Results state
   const [results, setResults] = useState<OptimizationResults | null>(null)
@@ -103,6 +104,7 @@ export default function OptimizationPage() {
     setRunningPhase('initializing')
     setElapsedSec(0)
     setEtaSec(null)
+    startAtRef.current = Date.now()
 
     try {
       const customQuestions = hasCustomQ ? [customQuestion.trim()] : []
@@ -121,7 +123,23 @@ export default function OptimizationPage() {
 
       wsRef.current = connectOptimizationWS(sessionId, {
         onIterationComplete: (log) => {
-          if (typeof log?.iteration === 'number') setCurrentIter(log.iteration)
+          if (typeof log?.iteration === 'number') setCurrentIter(prev => Math.max(prev, log.iteration))
+        },
+        onProgress: (progress) => {
+          if (!progress) return
+          if (typeof progress.totalIterations === 'number' && progress.totalIterations > 0) {
+            setTotalIter(progress.totalIterations)
+          }
+          if (typeof progress.iteration === 'number') {
+            setCurrentIter(prev => Math.max(prev, progress.iteration))
+          }
+          if (typeof progress.elapsedSeconds === 'number' && progress.elapsedSeconds > 0) {
+            setElapsedSec(progress.elapsedSeconds)
+          }
+          if (typeof progress.etaSeconds === 'number') {
+            setEtaSec(progress.etaSeconds)
+          }
+          if (progress.phase) setRunningPhase(progress.phase)
         },
         onComplete: (finalResults) => {
           if (intervalRef.current) clearInterval(intervalRef.current)
@@ -144,18 +162,45 @@ export default function OptimizationPage() {
             getOptimizationProgress(sessionId),
           ])
 
-          setRunningPhase(progress.phase || 'running')
-          setElapsedSec(progress.elapsedSeconds || 0)
-          setEtaSec(progress.etaSeconds)
+          const localElapsed = startAtRef.current ? (Date.now() - startAtRef.current) / 1000 : 0
+          const totalFromProgress = typeof progress.totalIterations === 'number' && progress.totalIterations > 0
+            ? progress.totalIterations
+            : maxIter
+          setTotalIter(prev => (totalFromProgress > 0 ? totalFromProgress : (prev || maxIter)))
+
+          const elapsed = typeof progress.elapsedSeconds === 'number' && progress.elapsedSeconds > 0
+            ? progress.elapsedSeconds
+            : localElapsed
+          setElapsedSec(elapsed)
+
+          const etaFromProgress = typeof progress.etaSeconds === 'number' ? progress.etaSeconds : null
+          const timeRatio = totalFromProgress > 0
+            ? (etaFromProgress !== null && etaFromProgress + elapsed > 0
+              ? elapsed / (elapsed + etaFromProgress)
+              : Math.min(1, elapsed / (totalFromProgress * 12)))
+            : 0
+          const timeIter = Math.floor(timeRatio * totalFromProgress)
 
           const history = r.performanceHistory ?? []
-          if (history.length > 0) {
-            setCurrentIter(history.length)
-            setLiveScores([...history])
-          }
+          const historyIter = history.length
+          if (history.length > 0) setLiveScores([...history])
+
+          const progressIter = typeof progress.iteration === 'number' ? progress.iteration : 0
+          const derivedIter = Math.max(progressIter, historyIter, timeIter)
+          if (derivedIter > 0) setCurrentIter(prev => Math.max(prev, derivedIter))
+
+          const derivedEta = etaFromProgress !== null
+            ? etaFromProgress
+            : (derivedIter > 0 ? Math.max(0, (totalFromProgress - derivedIter) * 12) : null)
+          setEtaSec(derivedEta)
+          setRunningPhase(progress.phase || (derivedIter > 0 ? 'generation' : 'initializing'))
+
           const detail = r as any
           const isDone =
-            history.length >= maxIter ||
+            historyIter >= totalFromProgress ||
+            progress.status === 'completed' ||
+            progress.status === 'error' ||
+            progress.status === 'stopped' ||
             r.converged ||
             detail.status === 'completed' ||
             detail.status === 'error' ||
@@ -172,7 +217,15 @@ export default function OptimizationPage() {
             setResults(r)
             setPhase('results')
           }
-        } catch { /* keep polling */ }
+        } catch {
+          const localElapsed = startAtRef.current ? (Date.now() - startAtRef.current) / 1000 : 0
+          const totalFromProgress = maxIter
+          const timeRatio = totalFromProgress > 0 ? Math.min(1, localElapsed / (totalFromProgress * 12)) : 0
+          const timeIter = Math.floor(timeRatio * totalFromProgress)
+          setElapsedSec(localElapsed)
+          if (timeIter > 0) setCurrentIter(prev => Math.max(prev, timeIter))
+          setEtaSec(timeIter > 0 ? Math.max(0, (totalFromProgress - timeIter) * 12) : null)
+        }
       }, 1500)
 
       intervalRef.current = poll as unknown as ReturnType<typeof setInterval>
@@ -200,6 +253,7 @@ export default function OptimizationPage() {
       wsRef.current.close()
       wsRef.current = null
     }
+    startAtRef.current = null
     setPhase('setup')
     setResults(null)
     setCurrentIter(0)
@@ -435,7 +489,11 @@ export default function OptimizationPage() {
 function RunningView({ currentIter, totalIter, scores, running, phase, elapsedSec, etaSec }: {
   currentIter: number; totalIter: number; scores: number[]; running: boolean; phase: string; elapsedSec: number; etaSec: number | null
 }) {
-  const pct = totalIter > 0 ? (currentIter / totalIter) * 100 : 0
+  const iterPct = totalIter > 0 ? (currentIter / totalIter) * 100 : 0
+  const timePct = etaSec !== null && etaSec + elapsedSec > 0
+    ? (elapsedSec / (elapsedSec + etaSec)) * 100
+    : 0
+  const pct = Math.min(100, Math.max(iterPct, timePct))
   const lastScore = scores[scores.length - 1] ?? 0
 
   return (

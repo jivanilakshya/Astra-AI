@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { DollarSign, TrendingUp, TrendingDown, Calendar, PieChart } from 'lucide-react'
 import {
@@ -25,64 +25,89 @@ interface CostRecord {
 }
 
 const PIE_COLORS = ['var(--color-accent)', 'var(--color-text-muted)', 'var(--color-border-strong)']
+const LS_KEY = 'astra_cost_history_v1'
+
+function readCostCache(): CostRecord[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const cached = localStorage.getItem(LS_KEY)
+    if (!cached) return []
+    const parsed = JSON.parse(cached)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writeCostCache(rows: CostRecord[]) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(rows))
+  } catch {
+    // ignore quota and serialization errors
+  }
+}
+
+function buildScaffold(days = 7): CostRecord[] {
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (days - 1 - i))
+    return {
+      date: d.toISOString().slice(0, 10),
+      totalCost: 0,
+      generatorCost: 0,
+      judgeCost: 0,
+      optimizerCost: 0,
+      tokensUsed: 0,
+      requests: 0,
+    }
+  })
+}
 
 export default function CostTrackingPage() {
-  const [data, setData] = useState<CostRecord[]>([])
-  const [loading, setLoading] = useState(true)
-  const LS_KEY = 'astra_cost_history_v1'
+  const cachedRef = useRef<CostRecord[]>(readCostCache())
+  const [data, setData] = useState<CostRecord[]>(cachedRef.current)
+  const [loading, setLoading] = useState(cachedRef.current.length === 0)
+  const [error, setError] = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null)
+
+  const scaffoldData = useMemo(() => buildScaffold(7), [])
 
   useEffect(() => {
-    const cached = localStorage.getItem(LS_KEY)
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached)
-        if (Array.isArray(parsed)) {
-          setData(parsed)
-          setLoading(false)
-        }
-      } catch {
-        // ignore corrupted cache
-      }
-    }
-
     const refresh = () => {
       getCostHistory().then((d: any) => {
         const normalized = Array.isArray(d) ? d : []
         if (normalized.length > 0) {
           setData(normalized)
-          localStorage.setItem(LS_KEY, JSON.stringify(normalized))
+          writeCostCache(normalized)
+        } else {
+          setData(prev => (prev.length > 0 ? prev : scaffoldData))
         }
+        setError(null)
+        setLastUpdated(new Date().toISOString())
         setLoading(false)
-      }).catch(() => setLoading(false))
+      }).catch(() => {
+        setError('Unable to load cost history right now.')
+        setData(prev => (prev.length > 0 ? prev : scaffoldData))
+        setLoading(false)
+      })
     }
 
     refresh()
     const iv = setInterval(refresh, 5000)
     return () => clearInterval(iv)
-  }, [])
+  }, [scaffoldData])
 
   if (loading) return <div className="page-container"><SkeletonLoader rows={6} /></div>
 
-  const baseData = data.length > 0
-    ? data
-    : Array.from({ length: 7 }, (_, i) => {
-        const d = new Date()
-        d.setDate(d.getDate() - (6 - i))
-        return {
-          date: d.toISOString().slice(0, 10),
-          totalCost: 0,
-          generatorCost: 0,
-          judgeCost: 0,
-          optimizerCost: 0,
-          tokensUsed: 0,
-          requests: 0,
-        }
-      })
+  const baseData = data.length > 0 ? data : scaffoldData
 
   const totalCost = baseData.reduce((a, b) => a + b.totalCost, 0)
   const totalTokens = baseData.reduce((a, b) => a + b.tokensUsed, 0)
   const totalRequests = baseData.reduce((a, b) => a + b.requests, 0)
   const avgDaily = baseData.length ? totalCost / baseData.length : 0
+  const hasRealData = baseData.some(row => row.totalCost > 0 || row.tokensUsed > 0 || row.requests > 0)
+  const maxCost = baseData.reduce((max, row) => Math.max(max, row.totalCost || 0), 0)
+  const yMax = maxCost > 0 ? Math.max(maxCost * 1.2, 0.01) : 0.01
 
   const genTotal = baseData.reduce((a, b) => a + b.generatorCost, 0)
   const judgeTotal = baseData.reduce((a, b) => a + b.judgeCost, 0)
@@ -106,8 +131,12 @@ export default function CostTrackingPage() {
         <motion.div variants={fadeUp} className="mb-8">
           <h1 className="page-title">Cost Tracking</h1>
           <p className="text-text-secondary text-sm mt-1">Monitor API usage and costs over time</p>
-          {!data.length && (
+          {!hasRealData && (
             <p className="text-xs text-text-muted mt-2 font-mono">Showing starter chart scaffold. Real values appear as soon as model calls run.</p>
+          )}
+          {error && <p className="text-xs text-amber-400 mt-2">{error}</p>}
+          {lastUpdated && (
+            <p className="text-[10px] text-text-muted mt-1 font-mono">Last updated: {new Date(lastUpdated).toLocaleTimeString()}</p>
           )}
         </motion.div>
 
@@ -127,6 +156,17 @@ export default function CostTrackingPage() {
             </Card>
           ))}
         </motion.div>
+
+        {!hasRealData && (
+          <motion.div variants={fadeUp} className="mb-8">
+            <Card>
+              <div className="flex items-center gap-3 text-sm text-text-secondary">
+                <Calendar size={14} className="text-text-muted" />
+                No usage recorded yet. Run Ask, Compare, or Optimize to populate real costs and token usage.
+              </div>
+            </Card>
+          </motion.div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-6 mb-8">
           {/* Cost Timeline */}
@@ -150,10 +190,13 @@ export default function CostTrackingPage() {
                     dataKey="date"
                     tick={{ fill: 'var(--color-text-muted)', fontSize: 10, fontFamily: 'JetBrains Mono' }}
                     tickFormatter={v => new Date(v).toLocaleDateString('en', { month: 'short', day: 'numeric' })}
+                    label={{ value: 'Date', position: 'insideBottom', offset: -2, fontSize: 11, fill: 'var(--color-text-muted)' }}
                   />
                   <YAxis
                     tick={{ fill: 'var(--color-text-muted)', fontSize: 10, fontFamily: 'JetBrains Mono' }}
                     tickFormatter={v => `$${v}`}
+                    domain={[0, yMax]}
+                    label={{ value: 'Cost (USD)', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--color-text-muted)' }}
                   />
                   <Tooltip
                     contentStyle={{
@@ -164,16 +207,25 @@ export default function CostTrackingPage() {
                       fontFamily: 'JetBrains Mono',
                       fontSize: '12px',
                     }}
-                    formatter={(v: number) => [`$${v.toFixed(4)}`, '']}
+                    formatter={(v: number) => [`$${v.toFixed(4)}`, 'Cost']}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    height={20}
+                    formatter={(value) => (
+                      <span style={{ color: 'var(--color-text-secondary)', fontSize: '11px', fontFamily: 'JetBrains Mono' }}>{value}</span>
+                    )}
                   />
                   <Area
                     type="monotone"
                     dataKey="totalCost"
+                    name="Total Cost"
                     stroke="var(--color-accent)"
                     fill="var(--color-accent)"
                     fillOpacity={0.1}
                     strokeWidth={2}
-                    name="Cost"
+                    dot={{ r: 3, fill: 'var(--color-surface-1)', stroke: 'var(--color-accent)', strokeWidth: 1 }}
+                    activeDot={{ r: 5, fill: 'var(--color-accent)' }}
                   />
                 </AreaChart>
               </ResponsiveContainer>

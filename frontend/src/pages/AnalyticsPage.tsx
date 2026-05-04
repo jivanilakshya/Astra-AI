@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { BarChart3, TrendingUp, Clock, Filter } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+} from 'recharts'
 import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
@@ -64,7 +67,7 @@ export default function AnalyticsPage() {
   const avgScore = completed.length ? +(completed.reduce((a, b) => a + (b.finalScore ?? 0), 0) / completed.length).toFixed(1) : 0
   const avgImprovement = completed.length ? +(completed.reduce((a, b) => a + (b.improvement ?? 0), 0) / completed.length).toFixed(1) : 0
   const avgIterations = sessions.length ? +(sessions.reduce((a, b) => a + b.totalIterations, 0) / sessions.length).toFixed(1) : 0
-  const allScores = completed.filter(s => s.finalScore).map(s => s.finalScore!).reverse()
+  const allScores = completed.filter(s => s.finalScore !== undefined && s.finalScore !== null).map(s => s.finalScore as number).reverse()
   const fallbackScores = modelCalls
     .slice()
     .reverse()
@@ -74,6 +77,23 @@ export default function AnalyticsPage() {
       return +qualityFromTokens.toFixed(1)
     })
   const chartScores = allScores.length > 1 ? allScores : fallbackScores.length > 1 ? fallbackScores : [4.0, 4.2]
+
+  const distributionScores = allScores.length > 0 ? allScores : fallbackScores
+  const usingFallbackDistribution = allScores.length === 0 && fallbackScores.length > 0
+  const distributionData = Array.from({ length: 10 }, (_, i) => {
+    const min = i
+    const max = i + 1
+    const count = distributionScores.filter((s) => {
+      const score = Math.max(0, Math.min(10, s))
+      if (i === 9) return score >= min && score <= 10
+      return score >= min && score < max
+    }).length
+    return {
+      range: `${min}-${max}`,
+      count,
+      color: scoreToColor(min + 0.5),
+    }
+  })
 
   if (loading) return <div className="page-container"><SkeletonLoader rows={8} /></div>
 
@@ -158,41 +178,52 @@ export default function AnalyticsPage() {
         {/* Score Distribution */}
         <motion.div variants={fadeUp} className="mb-8">
           <Card>
-            <h2 className="section-title mb-4">Score Distribution</h2>
-            {(() => {
-              const scoreSources = sessions.filter(s => (s.finalScore ?? 0) > 0)
-              if (scoreSources.length === 0) {
-                return <p className="text-sm text-text-muted text-center py-8">No scored sessions yet. Run optimizations to build distribution data.</p>
-              }
-              const maxCount = Math.max(1, ...Array.from({ length: 10 }, (_, i) =>
-                scoreSources.filter(s => (s.finalScore ?? 0) >= i + 1 && (s.finalScore ?? 0) < i + 2).length
-              ))
-              return (
-                <div className="flex items-end gap-1 h-40">
-                  {Array.from({ length: 10 }, (_, i) => {
-                    const min = i + 1
-                    const max = i + 2
-                    const count = scoreSources.filter(s => (s.finalScore ?? 0) >= min && (s.finalScore ?? 0) < max).length
-                    const height = count > 0 ? Math.max((count / maxCount) * 100, 12) : 4
-                    return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                        {count > 0 && (
-                          <span className="text-[10px] font-mono text-text-muted">{count}</span>
-                        )}
-                        <motion.div
-                          className="w-full rounded-t"
-                          style={{ backgroundColor: count > 0 ? scoreToColor(min + 0.5) : 'var(--color-surface-2)', height: `${height}%` }}
-                          initial={{ scaleY: 0 }}
-                          animate={{ scaleY: 1 }}
-                          transition={{ delay: i * 0.05, duration: 0.4 }}
-                        />
-                        <span className="text-[10px] font-mono text-text-muted">{min}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })()}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="section-title">Score Distribution</h2>
+              {usingFallbackDistribution && (
+                <span className="text-xs text-text-muted font-mono">Using live model-call fallback</span>
+              )}
+            </div>
+            {distributionScores.length === 0 ? (
+              <p className="text-sm text-text-muted text-center py-8">No scored sessions yet. Run optimizations to build distribution data.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={distributionData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
+                  <XAxis
+                    dataKey="range"
+                    tick={{ fontSize: 11, fill: 'var(--color-text-muted)', fontFamily: 'JetBrains Mono' }}
+                    axisLine={{ stroke: 'var(--color-border)' }}
+                    tickLine={false}
+                    label={{ value: 'Score Range', position: 'insideBottom', offset: -2, fontSize: 11, fill: 'var(--color-text-muted)' }}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 11, fill: 'var(--color-text-muted)', fontFamily: 'JetBrains Mono' }}
+                    axisLine={{ stroke: 'var(--color-border)' }}
+                    tickLine={false}
+                    label={{ value: 'Sessions', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--color-text-muted)' }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--color-surface-1)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '10px',
+                      fontSize: 12,
+                      fontFamily: 'JetBrains Mono',
+                      color: 'var(--color-text-primary)',
+                    }}
+                    labelStyle={{ color: 'var(--color-text-secondary)' }}
+                    formatter={(value: number) => [value, 'Sessions']}
+                  />
+                  <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={32}>
+                    {distributionData.map((entry, i) => (
+                      <Cell key={`cell-${i}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </Card>
         </motion.div>
 

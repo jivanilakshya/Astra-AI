@@ -1,4 +1,4 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts'
 
 interface PerformanceLineChartProps {
   data: number[]
@@ -40,6 +40,13 @@ export default function PerformanceLineChart({ data, target = 8.5, height = 280,
             labelStyle={{ color: 'var(--color-text-secondary)' }}
             formatter={(value: number) => [value.toFixed(2), 'Score']}
           />
+          <Legend
+            verticalAlign="top"
+            height={20}
+            formatter={(value) => (
+              <span style={{ color: 'var(--color-text-secondary)', fontSize: 11, fontFamily: 'JetBrains Mono' }}>{value}</span>
+            )}
+          />
           {target > 0 && (
             <ReferenceLine
               y={target}
@@ -51,6 +58,7 @@ export default function PerformanceLineChart({ data, target = 8.5, height = 280,
           <Line
             type="monotone"
             dataKey="score"
+            name="Score"
             stroke="var(--color-accent)"
             strokeWidth={2}
             dot={{ r: 4, fill: 'var(--color-surface-1)', stroke: 'var(--color-accent)', strokeWidth: 2 }}

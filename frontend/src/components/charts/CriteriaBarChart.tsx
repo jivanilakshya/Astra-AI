@@ -32,6 +32,7 @@ export default function CriteriaBarChart({ scores, height = 280, className = '' 
             tick={{ fontSize: 11, fill: 'var(--color-text-muted)', fontFamily: 'JetBrains Mono' }}
             axisLine={{ stroke: 'var(--color-border)' }}
             tickLine={false}
+            label={{ value: 'Score', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--color-text-muted)' }}
           />
           <Tooltip
             contentStyle={{
@@ -41,8 +42,9 @@ export default function CriteriaBarChart({ scores, height = 280, className = '' 
               fontSize: 12,
               color: 'var(--color-text-primary)',
             }}
+            formatter={(value: number) => [value.toFixed(1), 'Score']}
           />
-          <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40}>
+          <Bar dataKey="value" name="Score" radius={[4, 4, 0, 0]} maxBarSize={40}>
             {data.map((entry, i) => (
               <Cell key={i} fill={entry.color} />
             ))}

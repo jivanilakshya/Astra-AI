@@ -1,4 +1,4 @@
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts'
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from 'recharts'
 import type { Scores } from '../../types'
 import { CRITERIA_LABELS } from '../../utils/constants'
 
@@ -29,8 +29,20 @@ export default function ScoreRadar({ scores, height = 280, className = '' }: Sco
             tick={{ fontSize: 9, fill: 'var(--color-text-muted)' }}
             axisLine={false}
           />
+          <Tooltip
+            contentStyle={{
+              background: 'var(--color-surface-1)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '10px',
+              fontSize: 12,
+              fontFamily: 'JetBrains Mono',
+              color: 'var(--color-text-primary)',
+            }}
+            formatter={(value: number) => [value.toFixed(1), 'Score']}
+          />
           <Radar
             dataKey="value"
+            name="Score"
             stroke="var(--color-accent)"
             fill="var(--color-accent)"
             fillOpacity={0.1}

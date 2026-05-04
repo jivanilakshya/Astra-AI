@@ -632,6 +632,7 @@ export async function setRuntimeMode(mode: 'developer' | 'production'): Promise<
 /* ─── WebSocket helper for optimization ─── */
 export function connectOptimizationWS(sessionId: string, handlers: {
   onIterationComplete?: (log: any) => void
+  onProgress?: (progress: any) => void
   onComplete?: (results: OptimizationResults) => void
   onError?: (err: any) => void
   onClose?: () => void
@@ -644,6 +645,9 @@ export function connectOptimizationWS(sessionId: string, handlers: {
     try {
       const msg = JSON.parse(event.data)
       switch (msg.type) {
+        case 'iteration_start':
+          handlers.onProgress?.(msg.data)
+          break
         case 'iteration_complete':
           handlers.onIterationComplete?.(msg.data)
           break

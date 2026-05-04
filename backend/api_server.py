@@ -37,7 +37,6 @@ _env_local = project_root / ".env"
 if _env_parent.exists():
     load_dotenv(str(_env_parent), override=True)
 elif _env_local.exists():
-elif _env_local.exists():
     load_dotenv(str(_env_local), override=True)
 else:
     load_dotenv()  # fallback: search CWD
@@ -464,13 +463,21 @@ def _seed_default_data():
 
 # ── Startup Event ────────────────────────────────────────────────────────────
 
+async def _background_init():
+    """Initialize backend components without blocking startup."""
+    try:
+        await backend.ensure_initialized()
+        _load_sessions_from_disk()
+        _seed_default_data()
+        logger.info("Astra-AI startup complete")
+    except Exception as e:
+        logger.error(f"Init failed: {e}")
+
+
 @app.on_event("startup")
 async def _startup():
-    """Initialize backend components eagerly on startup."""
-    await backend.ensure_initialized()
-    _load_sessions_from_disk()
-    _seed_default_data()
-    logger.info("Astra-AI startup complete")
+    """Kick off initialization in the background."""
+    asyncio.create_task(_background_init())
 
 
 # ── Health ───────────────────────────────────────────────────────────────────

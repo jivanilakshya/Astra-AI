@@ -98,5 +98,105 @@
     "latency_seconds": 5.309124946594238,
     "cost_usd": 0.0,
     "success": true
+  },
+  {
+    "timestamp": "2026-05-04T15:41:55.268169",
+    "prompt_hash": "04a255227f15",
+    "complexity": "simple",
+    "model_used": "Qwen/Qwen2.5-7B-Instruct",
+    "quality_score": 0.0,
+    "latency_seconds": 0.5877954959869385,
+    "cost_usd": 0.0,
+    "success": false
+  },
+  {
+    "timestamp": "2026-05-04T15:41:55.821359",
+    "prompt_hash": "04a255227f15",
+    "complexity": "simple",
+    "model_used": "mistralai/Mistral-7B-Instruct-v0.3",
+    "quality_score": 0.0,
+    "latency_seconds": 0.26506781578063965,
+    "cost_usd": 0.0,
+    "success": false
+  },
+  {
+    "timestamp": "2026-05-04T15:41:55.840063",
+    "prompt_hash": "04a255227f15",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.5,
+    "latency_seconds": 1.1593916416168213,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-04T15:41:56.371382",
+    "prompt_hash": "04a255227f15",
+    "complexity": "simple",
+    "model_used": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+    "quality_score": 0.0,
+    "latency_seconds": 0.2708241939544678,
+    "cost_usd": 0.0,
+    "success": false
+  },
+  {
+    "timestamp": "2026-05-04T15:42:32.035971",
+    "prompt_hash": "e2911f539449",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 5.8,
+    "latency_seconds": 0.9091522693634033,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-04T15:42:32.125643",
+    "prompt_hash": "e2911f539449",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.9,
+    "latency_seconds": 1.3630261421203613,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-04T15:42:47.246869",
+    "prompt_hash": "e2911f539449",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.6,
+    "latency_seconds": 1.6639418601989746,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-04T15:42:47.469228",
+    "prompt_hash": "e2911f539449",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.5,
+    "latency_seconds": 1.0509066581726074,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-04T15:42:48.629902",
+    "prompt_hash": "e2911f539449",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.5,
+    "latency_seconds": 1.0971877574920654,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-04T15:42:49.526944",
+    "prompt_hash": "e2911f539449",
+    "complexity": "simple",
+    "model_used": "Qwen/Qwen2.5-72B-Instruct",
+    "quality_score": 6.9,
+    "latency_seconds": 2.0560436248779297,
+    "cost_usd": 0.0,
+    "success": true
   }
 ]
