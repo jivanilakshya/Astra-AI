@@ -29,21 +29,64 @@ const PIE_COLORS = ['var(--color-accent)', 'var(--color-text-muted)', 'var(--col
 export default function CostTrackingPage() {
   const [data, setData] = useState<CostRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const LS_KEY = 'astra_cost_history_v1'
 
   useEffect(() => {
-    getCostHistory().then((d: any) => { setData(d); setLoading(false) })
+    const cached = localStorage.getItem(LS_KEY)
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed)) {
+          setData(parsed)
+          setLoading(false)
+        }
+      } catch {
+        // ignore corrupted cache
+      }
+    }
+
+    const refresh = () => {
+      getCostHistory().then((d: any) => {
+        const normalized = Array.isArray(d) ? d : []
+        if (normalized.length > 0) {
+          setData(normalized)
+          localStorage.setItem(LS_KEY, JSON.stringify(normalized))
+        }
+        setLoading(false)
+      }).catch(() => setLoading(false))
+    }
+
+    refresh()
+    const iv = setInterval(refresh, 5000)
+    return () => clearInterval(iv)
   }, [])
 
   if (loading) return <div className="page-container"><SkeletonLoader rows={6} /></div>
 
-  const totalCost = data.reduce((a, b) => a + b.totalCost, 0)
-  const totalTokens = data.reduce((a, b) => a + b.tokensUsed, 0)
-  const totalRequests = data.reduce((a, b) => a + b.requests, 0)
-  const avgDaily = data.length ? totalCost / data.length : 0
+  const baseData = data.length > 0
+    ? data
+    : Array.from({ length: 7 }, (_, i) => {
+        const d = new Date()
+        d.setDate(d.getDate() - (6 - i))
+        return {
+          date: d.toISOString().slice(0, 10),
+          totalCost: 0,
+          generatorCost: 0,
+          judgeCost: 0,
+          optimizerCost: 0,
+          tokensUsed: 0,
+          requests: 0,
+        }
+      })
 
-  const genTotal = data.reduce((a, b) => a + b.generatorCost, 0)
-  const judgeTotal = data.reduce((a, b) => a + b.judgeCost, 0)
-  const optTotal = data.reduce((a, b) => a + b.optimizerCost, 0)
+  const totalCost = baseData.reduce((a, b) => a + b.totalCost, 0)
+  const totalTokens = baseData.reduce((a, b) => a + b.tokensUsed, 0)
+  const totalRequests = baseData.reduce((a, b) => a + b.requests, 0)
+  const avgDaily = baseData.length ? totalCost / baseData.length : 0
+
+  const genTotal = baseData.reduce((a, b) => a + b.generatorCost, 0)
+  const judgeTotal = baseData.reduce((a, b) => a + b.judgeCost, 0)
+  const optTotal = baseData.reduce((a, b) => a + b.optimizerCost, 0)
 
   const pieData = [
     { name: 'Generator', value: +genTotal.toFixed(4) },
@@ -51,8 +94,8 @@ export default function CostTrackingPage() {
     { name: 'Optimizer', value: +optTotal.toFixed(4) },
   ]
 
-  const last7 = data.slice(-7)
-  const prev7 = data.slice(-14, -7)
+  const last7 = baseData.slice(-7)
+  const prev7 = baseData.slice(-14, -7)
   const recentCost = last7.reduce((a, b) => a + b.totalCost, 0)
   const prevCost = prev7.reduce((a, b) => a + b.totalCost, 0)
   const costChange = prevCost > 0 ? ((recentCost - prevCost) / prevCost) * 100 : 0
@@ -63,6 +106,9 @@ export default function CostTrackingPage() {
         <motion.div variants={fadeUp} className="mb-8">
           <h1 className="page-title">Cost Tracking</h1>
           <p className="text-text-secondary text-sm mt-1">Monitor API usage and costs over time</p>
+          {!data.length && (
+            <p className="text-xs text-text-muted mt-2 font-mono">Showing starter chart scaffold. Real values appear as soon as model calls run.</p>
+          )}
         </motion.div>
 
         {/* Summary */}
@@ -98,7 +144,7 @@ export default function CostTrackingPage() {
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={data}>
+                <AreaChart data={baseData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis
                     dataKey="date"
@@ -194,7 +240,7 @@ export default function CostTrackingPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.slice().reverse().slice(0, 14).map(d => (
+                  {baseData.slice().reverse().slice(0, 14).map(d => (
                     <tr key={d.date} className="table-row">
                       <td className="px-5 py-3 text-sm text-text-primary">{new Date(d.date).toLocaleDateString('en', { month: 'short', day: 'numeric' })}</td>
                       <td className="px-5 py-3 font-mono text-sm font-semibold text-text-primary">{formatCost(d.totalCost)}</td>

@@ -67,12 +67,28 @@ export interface QuestionTestResult {
     hasGroundTruth: boolean
     groundTruth: string
     matchScore: number | null
+    verdict?: 'STRONG' | 'GOOD' | 'PARTIAL' | 'WEAK' | 'NO_GROUND_TRUTH'
+    details?: {
+      keywordPrecision?: number
+      keywordRecall?: number
+      keywordF1?: number
+      sequenceSimilarity?: number
+      conceptCoverage?: number
+      brevityRatio?: number
+    }
+    notes?: string[]
+  }
+  context?: {
+    category?: string
+    related?: Array<{ id?: string; question?: string; hasGroundTruth?: boolean }>
+    contextText?: string
   }
   metadata: {
     model: string
     tokens_used: number
     input_tokens: number
     output_tokens: number
+    cost_usd?: number
     latency_ms: number
     temperature: number
     maxTokens: number
@@ -145,6 +161,16 @@ export interface GeneratedOutput {
   fullResponse?: string
   confidence?: number
   templateUsed?: string
+  templateDecision?: {
+    detectedIntent?: string
+    detectedComplexity?: string
+    category?: string
+  }
+  context?: {
+    category?: string
+    related?: Array<{ id?: string; question?: string; hasGroundTruth?: boolean }>
+    contextText?: string
+  }
   routing?: RoutingExplanation
   debug?: {
     fullPrompt: string
@@ -157,6 +183,7 @@ export interface GeneratedOutput {
     tokens_used?: number
     input_tokens?: number
     output_tokens?: number
+    cost_usd?: number
     latency_ms?: number
     timestamp?: string
     status?: string
@@ -180,6 +207,7 @@ export interface OptimizationConfig {
   maxTokens?: number
   smartRouter?: boolean
   questionIds?: string[]
+  customQuestions?: string[]
   templateId?: string
 }
 
@@ -271,6 +299,12 @@ export interface PromptAnalysis {
   scores: Record<string, number>
   flags: string[]
   detectedIntent?: string
+  recommendedTemplates?: Array<{ id: string; name: string; why?: string }>
+  templateAdvice?: {
+    selected?: string
+    complexity?: string
+    category?: string
+  }
 }
 
 /* ─── Sessions ─── */
@@ -303,7 +337,7 @@ export interface ComparisonResult {
   explanation: string
   scores: Scores
   compositeScore: number
-  metadata: { tokensUsed?: number; latencyMs?: number; costUsd?: number; status?: string; error?: string }
+    metadata: { tokensUsed?: number; latencyMs?: number; costUsd?: number; status?: string; error?: string; usedModel?: string }
 }
 
 export interface ComparisonReport {

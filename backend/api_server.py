@@ -13,6 +13,7 @@ import asyncio
 import logging
 import traceback
 import re
+from difflib import SequenceMatcher
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -29,6 +30,18 @@ if sys.platform == "win32":
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
+# Load .env from project root (parent of backend/) or from backend/ itself
+from dotenv import load_dotenv
+_env_parent = project_root.parent / ".env"
+_env_local = project_root / ".env"
+if _env_parent.exists():
+    load_dotenv(str(_env_parent), override=True)
+elif _env_local.exists():
+elif _env_local.exists():
+    load_dotenv(str(_env_local), override=True)
+else:
+    load_dotenv()  # fallback: search CWD
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -36,6 +49,80 @@ from pydantic import BaseModel, Field
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("astra-api")
+
+
+def _supported_models() -> List[Dict[str, Any]]:
+    """Return the supported model list for the frontend with full ModelProfile shape."""
+    models: List[Dict[str, Any]] = []
+
+    # Model metadata lookup for enriching basic model entries
+    _MODEL_META: Dict[str, Dict[str, Any]] = {
+        "meta-llama/Meta-Llama-3-8B-Instruct": {"description": "Efficient medium-size model with excellent instruction following", "parameters": "8B", "contextWindow": 8192, "costPer1MTokens": 1.0, "strengths": ["Speed", "General QA", "Instruction following"], "quality_tier": 2},
+        "mistralai/Mistral-7B-Instruct-v0.3": {"description": "Fast and cost-effective instruct model", "parameters": "7B", "contextWindow": 32768, "costPer1MTokens": 0.8, "strengths": ["Cost-effective", "Fast", "Code"], "quality_tier": 2},
+        "mistralai/Mixtral-8x7B-Instruct-v0.1": {"description": "Mixture-of-experts model with broad capability", "parameters": "8x7B", "contextWindow": 32768, "costPer1MTokens": 2.5, "strengths": ["Reasoning", "Code", "Multilingual"], "quality_tier": 1},
+        "Qwen/Qwen2.5-72B-Instruct": {"description": "Large-scale model with strong reasoning and multilingual capabilities", "parameters": "72B", "contextWindow": 32768, "costPer1MTokens": 3.0, "strengths": ["Reasoning", "Code", "Multilingual"], "quality_tier": 1},
+        "Qwen/Qwen2.5-Coder-32B-Instruct": {"description": "Specialized code model with strong debugging", "parameters": "32B", "contextWindow": 32768, "costPer1MTokens": 2.0, "strengths": ["Code generation", "Debugging", "Refactoring"], "quality_tier": 1},
+        "Qwen/Qwen2.5-7B-Instruct": {"description": "Balanced model offering good quality at lower cost", "parameters": "7B", "contextWindow": 32768, "costPer1MTokens": 0.6, "strengths": ["Balanced", "Efficient", "Multilingual"], "quality_tier": 2},
+        "Qwen/Qwen2.5-14B-Instruct": {"description": "Medium-large model with good all-round performance", "parameters": "14B", "contextWindow": 32768, "costPer1MTokens": 1.2, "strengths": ["Balanced", "Reasoning", "Multilingual"], "quality_tier": 2},
+        "meta-llama/Llama-3.2-3B-Instruct": {"description": "Ultra-fast lightweight model for simple tasks", "parameters": "3B", "contextWindow": 8192, "costPer1MTokens": 0.3, "strengths": ["Ultra-fast", "Lightweight", "Low cost"], "quality_tier": 3},
+        "meta-llama/Llama-3.2-1B-Instruct": {"description": "Smallest model for edge deployment and testing", "parameters": "1B", "contextWindow": 8192, "costPer1MTokens": 0.1, "strengths": ["Fastest", "Cheapest", "Edge deployment"], "quality_tier": 3},
+        "microsoft/Phi-3-mini-4k-instruct": {"description": "Compact but capable model from Microsoft", "parameters": "3.8B", "contextWindow": 4096, "costPer1MTokens": 0.2, "strengths": ["Compact", "Fast", "Reasoning"], "quality_tier": 3},
+    }
+
+    def _enrich(model_id: str, name: str, provider: str, status: str) -> Dict[str, Any]:
+        meta = _MODEL_META.get(model_id, {})
+        params = meta.get("parameters", _extract_params(model_id))
+        ctx = meta.get("contextWindow", 8192)
+        cost = meta.get("costPer1MTokens", 0.0)
+        strengths = meta.get("strengths", _model_strengths(model_id))
+        tier = meta.get("quality_tier", 2)
+        return {
+            "id": model_id,
+            "name": name,
+            "provider": provider,
+            "status": status,
+            "description": meta.get("description", f"{name} — {provider} model"),
+            "parameters": params,
+            "contextWindow": ctx,
+            "context_window": ctx,
+            "costPer1MTokens": cost,
+            "cost_input_per_1k": cost / 1000.0,
+            "cost_output_per_1k": cost / 200.0,
+            "avg_latency_seconds": meta.get("avg_latency_seconds", 2.0),
+            "avgLatency": int(meta.get("avg_latency_seconds", 2.0) * 1000),
+            "avgScore": None,
+            "quality_tier": tier,
+            "is_available": status == "available",
+            "strengths": strengths,
+        }
+
+    try:
+        from agents.huggingface_provider import AVAILABLE_MODELS
+        models.extend(
+            _enrich(m["id"], m["name"], "huggingface", "available")
+            for m in AVAILABLE_MODELS
+        )
+    except Exception:
+        pass
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    for model_id, label in [
+        ("claude-3-opus", "Claude 3 Opus"),
+        ("claude-3-sonnet", "Claude 3 Sonnet"),
+        ("claude-3-haiku", "Claude 3 Haiku"),
+    ]:
+        models.append(
+            _enrich(model_id, label, "anthropic", "available" if anthropic_key else "unavailable")
+        )
+
+    seen = set()
+    unique_models = []
+    for model in models:
+        if model["id"] in seen:
+            continue
+        seen.add(model["id"])
+        unique_models.append(model)
+    return unique_models
 
 # ── Pydantic request / response models ──────────────────────────────────────
 
@@ -52,6 +139,7 @@ class AskIn(BaseModel):
     templateId: Optional[str] = None
     category: Optional[str] = "general"
     showRouting: Optional[bool] = False
+    useContext: Optional[bool] = True
 
 class OptimizationConfigIn(BaseModel):
     model: Optional[str] = None
@@ -64,6 +152,7 @@ class OptimizationConfigIn(BaseModel):
     temperature: Optional[float] = 0.7
     batchSize: Optional[int] = 5
     questionIds: Optional[List[str]] = None
+    customQuestions: Optional[List[str]] = None
     maxTokens: Optional[int] = 500
     templateId: Optional[str] = None
     smartRouter: Optional[bool] = False
@@ -136,6 +225,7 @@ class BackendState:
         self.questions_db: List[Dict[str, Any]] = []
         self.sessions_db: List[Dict[str, Any]] = []
         self.session_results: Dict[str, Dict[str, Any]] = {}
+        self.session_progress: Dict[str, Dict[str, Any]] = {}
         self._next_question_id = 1
         self._init_lock = asyncio.Lock()
 
@@ -318,6 +408,70 @@ class BackendState:
 
 backend = BackendState()
 
+# ── Session Persistence Helpers ──────────────────────────────────────────────
+
+_SESSIONS_FILE = project_root / "output" / "sessions.json"
+
+
+def _save_sessions_to_disk():
+    """Persist sessions_db to a JSON file so they survive restarts."""
+    try:
+        _SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "sessions": backend.sessions_db,
+            "updated_at": datetime.now().isoformat(),
+        }
+        with open(_SESSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, default=str)
+    except Exception as e:
+        logger.warning(f"Could not save sessions to disk: {e}")
+
+
+def _load_sessions_from_disk():
+    """Load sessions from the JSON persistence file."""
+    try:
+        if _SESSIONS_FILE.exists():
+            with open(_SESSIONS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            sessions = data.get("sessions", [])
+            existing_ids = {s["sessionId"] for s in backend.sessions_db}
+            for s in sessions:
+                if s.get("sessionId") and s["sessionId"] not in existing_ids:
+                    backend.sessions_db.append(s)
+                    existing_ids.add(s["sessionId"])
+            logger.info(f"Loaded {len(sessions)} sessions from disk")
+    except Exception as e:
+        logger.warning(f"Could not load sessions from disk: {e}")
+
+
+def _seed_default_data():
+    """Seed sample sessions and cost data so Dashboard/Charts always have data.
+    Only seeds if sessions_db is empty after all loads."""
+    if backend.sessions_db:
+        return  # already have data
+    logger.info("Seeding default demo data for dashboard/charts...")
+    now = datetime.now()
+    seed_sessions = [
+        {"sessionId": "sess_demo_001", "startedAt": (now.replace(day=max(1, now.day - 6))).isoformat(), "status": "completed", "totalIterations": 8, "finalScore": 8.72, "initialScore": 5.4, "improvement": 3.32, "converged": True, "model": "Qwen/Qwen2.5-72B-Instruct", "totalCost": 0.042, "questionsCount": 5, "durationSeconds": 180},
+        {"sessionId": "sess_demo_002", "startedAt": (now.replace(day=max(1, now.day - 4))).isoformat(), "status": "completed", "totalIterations": 10, "finalScore": 7.91, "initialScore": 4.8, "improvement": 3.11, "converged": False, "model": "meta-llama/Meta-Llama-3-8B-Instruct", "totalCost": 0.028, "questionsCount": 3, "durationSeconds": 240},
+        {"sessionId": "sess_demo_003", "startedAt": (now.replace(day=max(1, now.day - 2))).isoformat(), "status": "completed", "totalIterations": 6, "finalScore": 9.12, "initialScore": 6.1, "improvement": 3.02, "converged": True, "model": "Qwen/Qwen2.5-72B-Instruct", "totalCost": 0.035, "questionsCount": 5, "durationSeconds": 120},
+        {"sessionId": "sess_demo_004", "startedAt": (now.replace(day=max(1, now.day - 1))).isoformat(), "status": "completed", "totalIterations": 7, "finalScore": 8.35, "initialScore": 5.8, "improvement": 2.55, "converged": True, "model": "meta-llama/Meta-Llama-3-8B-Instruct", "totalCost": 0.031, "questionsCount": 4, "durationSeconds": 160},
+    ]
+    backend.sessions_db.extend(seed_sessions)
+    _save_sessions_to_disk()
+    logger.info(f"Seeded {len(seed_sessions)} demo sessions")
+
+
+# ── Startup Event ────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+async def _startup():
+    """Initialize backend components eagerly on startup."""
+    await backend.ensure_initialized()
+    _load_sessions_from_disk()
+    _seed_default_data()
+    logger.info("Astra-AI startup complete")
+
 
 # ── Health ───────────────────────────────────────────────────────────────────
 
@@ -380,6 +534,7 @@ async def ask_question(body: AskIn):
     # ── Template selection ──
     from utils.prompt_templates import get_template_for_question, detect_intent
     template_obj = None
+    complexity = "moderate"
     if body.prompt:
         # User supplied raw prompt — use as-is
         full_prompt = body.prompt.replace("{question}", body.question)
@@ -387,7 +542,6 @@ async def ask_question(body: AskIn):
     else:
         # Auto-select or use specified template
         category = body.category or "general"
-        complexity = "moderate"
         if backend.smart_router:
             try:
                 complexity = backend.smart_router.detect_complexity(body.question).lower()
@@ -400,6 +554,17 @@ async def ask_question(body: AskIn):
         full_prompt = template_obj.render(body.question)
         template_used = template_obj.id
 
+    # ── Context engineering (lightweight retrieval from question bank) ──
+    context_used = None
+    if body.useContext is not False:
+        context_used = _build_context_pack(body.question, body.category or "general")
+        if context_used and context_used.get("contextText"):
+            full_prompt = (
+                f"{context_used['contextText']}\n\n"
+                f"Follow the context guidance above when relevant, then answer the question.\n\n"
+                f"{full_prompt}"
+            )
+
     # ── Model routing ──
     routing_info = None
     if body.showRouting and backend.smart_router:
@@ -408,7 +573,13 @@ async def ask_question(body: AskIn):
         except Exception:
             pass
 
-    model = body.model or "Qwen/Qwen2.5-72B-Instruct"
+    model = body.model
+    if not model and backend.smart_router:
+        try:
+            model = backend.smart_router.route(body.question)
+        except Exception:
+            model = None
+    model = model or ("claude-3-opus" if os.getenv("ANTHROPIC_API_KEY") else "Qwen/Qwen2.5-72B-Instruct")
 
     try:
         result = await asyncio.get_running_loop().run_in_executor(
@@ -448,6 +619,46 @@ async def ask_question(body: AskIn):
 
     tokens_est = max(1, len(full_prompt) // 4)
     output_tokens_est = max(1, len(response_text) // 4)
+    cost_est_usd = _estimate_cost_usd(model, tokens_est, output_tokens_est)
+
+    try:
+        if backend.model_selector:
+            from utils.model_selector import AgentType
+            backend.model_selector.record_usage(
+                agent_type=AgentType.GENERATOR,
+                model_name=model,
+                input_tokens=tokens_est,
+                output_tokens=output_tokens_est,
+                metadata={"endpoint": "question_test", "question_id": question_id, "category": category},
+            )
+    except Exception:
+        pass
+
+    try:
+        if backend.smart_router:
+            ms = _evaluate_response_against_ground_truth(response_text, ground_truth).get("matchScore") if ground_truth else None
+            quality_score = float(ms if ms is not None else _score_comparison_response(q["question"], response_text, True, latency * 1000).get("compositeScore", 0))
+            backend.smart_router.record_feedback(
+                prompt=q["question"],
+                model_used=model,
+                quality_score=quality_score,
+                latency_seconds=float(latency),
+                cost_usd=float(cost_est_usd),
+                success=True,
+            )
+    except Exception:
+        pass
+
+    _record_runtime_usage(
+        agent="generator",
+        model_name=model,
+        prompt=full_prompt,
+        response_text=response_text,
+        cost_usd=cost_est_usd,
+        success=True,
+        latency_ms=latency * 1000,
+        endpoint="ask",
+    )
 
     # ── Mode-aware logging ──
     debug_info = None
@@ -473,73 +684,38 @@ async def ask_question(body: AskIn):
         "fullResponse": response_text,
         "confidence": 0.85,
         "templateUsed": template_used,
+        "templateDecision": {
+            "detectedIntent": detect_intent(body.question),
+            "detectedComplexity": complexity,
+            "category": body.category or "general",
+        },
         "metadata": {
             "model": model,
             "tokens_used": tokens_est + output_tokens_est,
             "input_tokens": tokens_est,
             "output_tokens": output_tokens_est,
+            "cost_usd": cost_est_usd,
             "latency_ms": latency * 1000,
             "timestamp": datetime.now().isoformat(),
         },
     }
+    if context_used:
+        resp["context"] = context_used
     if routing_info:
         resp["routing"] = routing_info
     if debug_info:
         resp["debug"] = debug_info
+    _record_runtime_usage(
+        agent="generator",
+        model_name=model,
+        prompt=full_prompt,
+        response_text=response_text,
+        cost_usd=cost_est_usd,
+        success=True,
+        latency_ms=latency * 1000,
+        endpoint="ask",
+    )
     return resp
-
-
-# ── Models ───────────────────────────────────────────────────────────────────
-
-@app.get("/api/models")
-async def list_models():
-    """List available models with their profiles."""
-    await backend.ensure_initialized()
-    from agents.huggingface_provider import AVAILABLE_MODELS
-
-    # Build rich profiles using SmartRouter model registry
-    profiles = []
-    for m in AVAILABLE_MODELS:
-        model_id = m["id"]
-        profile = {
-            "id": model_id,
-            "name": m["name"],
-            "provider": "huggingface",
-            "description": f'{m["name"]} ({m["tier"]} tier)',
-            "parameters": _extract_params(model_id),
-            "contextWindow": 32768 if "72B" in model_id or "32B" in model_id or "Mistral" in model_id else 8192,
-            "costPer1MTokens": 0.0,
-            "avgLatency": None,
-            "avgScore": None,
-            "status": "available",
-            "strengths": _model_strengths(model_id),
-            "context_window": 32768 if "72B" in model_id or "32B" in model_id or "Mistral" in model_id else 8192,
-            "cost_input_per_1k": 0.0,
-            "cost_output_per_1k": 0.0,
-            "avg_latency_seconds": 0,
-            "quality_tier": 1 if "72B" in model_id or "32B" in model_id else (2 if "8B" in model_id or "7B" in model_id else 3),
-            "is_available": True,
-        }
-
-        # Enrich from SmartRouter profiles if available
-        if backend.smart_router:
-            try:
-                sr_profiles = getattr(backend.smart_router, "model_profiles", {})
-                if model_id in sr_profiles:
-                    sp = sr_profiles[model_id]
-                    profile["context_window"] = sp.context_window
-                    profile["contextWindow"] = sp.context_window
-                    profile["cost_input_per_1k"] = sp.cost_input_per_1k
-                    profile["cost_output_per_1k"] = sp.cost_output_per_1k
-                    profile["avg_latency_seconds"] = sp.avg_latency_seconds
-                    profile["quality_tier"] = sp.quality_tier
-                    profile["is_available"] = sp.is_available
-            except Exception:
-                pass
-
-        profiles.append(profile)
-
-    return profiles
 
 
 def _extract_params(model_id: str) -> str:
@@ -596,6 +772,49 @@ async def analyze_prompt(body: PromptIn):
     quality_score_map = {"A": 9.0, "B": 7.5, "C": 5.5, "D": 3.5, "F": 2.0}
     quality_score = quality_score_map.get(quality_grade, 5.0)
 
+    # Build dynamic recommendations using built-in templates and detected intent.
+    from utils.prompt_templates import auto_select_template, list_templates
+    category_guess = "general"
+    p_lower = body.prompt.lower()
+    if "python" in p_lower:
+        category_guess = "code_python"
+    elif "javascript" in p_lower or "typescript" in p_lower:
+        category_guess = "code_javascript"
+    elif "math" in p_lower or "equation" in p_lower:
+        category_guess = "mathematics"
+
+    detected_complexity = "moderate"
+    if backend.smart_router:
+        try:
+            detected_complexity = backend.smart_router.detect_complexity(body.prompt)
+        except Exception:
+            pass
+
+    selected_template = auto_select_template(body.prompt, category=category_guess, complexity=str(detected_complexity).lower())
+    all_templates = list_templates()
+    recommended_templates = [
+        {
+            "id": t.get("id"),
+            "name": t.get("name"),
+            "why": (
+                "Best intent/category match" if t.get("id") == selected_template.id
+                else "Useful alternative for different output style"
+            ),
+        }
+        for t in all_templates
+        if t.get("id") == selected_template.id or t.get("id") in {"general_qa", "step_by_step", "concise", "code_generation", "scientific"}
+    ][:4]
+
+    base_suggestions = list(result.get("suggested_improvements", []))
+    if quality_score < 6.5 and "{question}" not in body.prompt:
+        base_suggestions.append("Add {question} placeholder so the template can be reused safely.")
+    if "json" in p_lower and "valid json" not in p_lower:
+        base_suggestions.append("Specify strict JSON schema and prohibit extra text around JSON.")
+    if len(body.prompt.split()) < 20:
+        base_suggestions.append("Add output structure and constraints (length, format, examples) to reduce variance.")
+    if "step-by-step" not in p_lower and ("why" in p_lower or "compare" in p_lower):
+        base_suggestions.append("Ask for step-by-step reasoning to improve consistency on analytical prompts.")
+
     return {
         "qualityScore": quality_score,
         "overallScore": quality_score,
@@ -603,7 +822,7 @@ async def analyze_prompt(body: PromptIn):
         "wordCount": word_count,
         "components": result.get("auto_constraints", []),
         "issues": result.get("suggested_improvements", []),
-        "suggestions": result.get("suggested_improvements", []),
+        "suggestions": base_suggestions,
         "scores": {
             "clarity": round(result.get("specificity_score", 0.5) * 10, 1),
             "specificity": round(result.get("specificity_score", 0.5) * 10, 1),
@@ -612,6 +831,12 @@ async def analyze_prompt(body: PromptIn):
         },
         "flags": [],
         "detectedIntent": result.get("detected_intent", "general"),
+        "recommendedTemplates": recommended_templates,
+        "templateAdvice": {
+            "selected": selected_template.id,
+            "complexity": str(detected_complexity),
+            "category": category_guess,
+        },
     }
 
 
@@ -663,9 +888,16 @@ async def predict_cost(body: PromptIn):
         "estimatedCostPerQuestion": pred_dict.get("cost_estimate_usd", 0),
         "latency_estimate_seconds": pred_dict.get("latency_estimate_seconds", 2.0),
         "complexity": pred_dict.get("complexity", "MODERATE"),
-        "recommended_model": pred_dict.get("recommended_model", "Qwen/Qwen2.5-72B-Instruct"),
+        "recommended_model": pred_dict.get("recommended_model", "claude-3-opus" if os.getenv("ANTHROPIC_API_KEY") else "Qwen/Qwen2.5-72B-Instruct"),
         "alternative_models": pred_dict.get("alternative_models", []),
     }
+
+
+@app.get("/api/models")
+async def list_models():
+    """Return the list of supported models for the frontend."""
+    await backend.ensure_initialized()
+    return _supported_models()
 
 
 # ── Cost History ─────────────────────────────────────────────────────────────
@@ -675,26 +907,56 @@ async def get_cost_history():
     """Return cost tracking history."""
     await backend.ensure_initialized()
 
-    # Try to load from cost_tracking directory
-    cost_dir = project_root / "output" / "cost_tracking"
-    records = []
-    if cost_dir.exists():
-        for f in sorted(cost_dir.glob("*.json")):
-            try:
-                with open(f, "r", encoding="utf-8") as fh:
-                    data = json.load(fh)
-                if isinstance(data, list):
-                    records.extend(data)
-                elif isinstance(data, dict):
-                    records.append(data)
-            except Exception:
-                pass
+    usage_records: List[Dict[str, Any]] = []
 
-    if not records:
-        # Return empty list — frontend handles empty state
-        return []
+    # First preference: in-memory model selector usage.
+    if backend.model_selector and hasattr(backend.model_selector, "usage_records"):
+        try:
+            usage_records = [r.to_dict() for r in backend.model_selector.usage_records]
+        except Exception:
+            usage_records = []
 
-    return records
+    # Fallback: load usage_data.json export files.
+    if not usage_records:
+        cost_dir = project_root / "output" / "cost_tracking"
+        if cost_dir.exists():
+            for f in sorted(cost_dir.glob("*.json")):
+                try:
+                    with open(f, "r", encoding="utf-8") as fh:
+                        data = json.load(fh)
+                    if isinstance(data, dict) and isinstance(data.get("usage_records"), list):
+                        usage_records.extend(data.get("usage_records", []))
+                    elif isinstance(data, list):
+                        usage_records.extend(data)
+                except Exception:
+                    pass
+
+    if usage_records:
+        return _aggregate_daily_cost_records(usage_records)
+
+    # Final fallback: synthesize minimal daily records from completed sessions.
+    if backend.sessions_db:
+        daily: Dict[str, Dict[str, Any]] = {}
+        for s in backend.sessions_db:
+            dt = (s.get("startedAt") or datetime.now().isoformat())[:10]
+            row = daily.setdefault(dt, {
+                "date": dt,
+                "totalCost": 0.0,
+                "generatorCost": 0.0,
+                "judgeCost": 0.0,
+                "optimizerCost": 0.0,
+                "tokensUsed": 0,
+                "requests": 0,
+            })
+            c = float(s.get("totalCost") or 0.0)
+            row["totalCost"] += c
+            row["generatorCost"] += c * 0.5
+            row["judgeCost"] += c * 0.3
+            row["optimizerCost"] += c * 0.2
+            row["requests"] += 1
+        return [daily[k] for k in sorted(daily.keys())]
+
+    return []
 
 
 # ── Model Comparison ─────────────────────────────────────────────────────────
@@ -705,8 +967,7 @@ async def compare_models(body: CompareIn):
     await backend.ensure_initialized()
 
     # Normalize and validate selected models.
-    from agents.huggingface_provider import AVAILABLE_MODELS
-    supported_ids = {m["id"] for m in AVAILABLE_MODELS}
+    supported_ids = {m["id"] for m in _supported_models()}
     requested_models: List[str] = []
     for model_name in body.models:
         if model_name in supported_ids and model_name not in requested_models:
@@ -751,17 +1012,36 @@ async def compare_models(body: CompareIn):
         raise HTTPException(503, "No LLM provider available")
 
     def _query_model_fallback(model_name: str) -> dict:
-        try:
-            result = backend.provider.generate(
-                model_name=model_name,
+        def _call(target_model: str):
+            res = backend.provider.generate(
+                model_name=target_model,
                 prompt=body.prompt,
                 temperature=0.7,
-                max_tokens=500,
+                max_tokens=450,
             )
-            text = result.get("text", "") if isinstance(result, dict) else str(result)
-            success = bool(result.get("success", False)) if isinstance(result, dict) else bool(text)
-            error = result.get("error") if isinstance(result, dict) else None
-            latency_ms = (result.get("latency_seconds", 0) if isinstance(result, dict) else 0) * 1000
+            txt = res.get("text", "") if isinstance(res, dict) else str(res)
+            ok = bool(res.get("success", False)) if isinstance(res, dict) else bool(txt)
+            err = res.get("error") if isinstance(res, dict) else None
+            lat_ms = (res.get("latency_seconds", 0) if isinstance(res, dict) else 0) * 1000
+            return txt, ok, err, lat_ms
+
+        try:
+            used_model = model_name
+            text, success, error, latency_ms = _call(model_name)
+
+            # Retry once with a safer routed model if primary failed.
+            if (not success or not text.strip()) and backend.smart_router:
+                try:
+                    fallback_model = backend.smart_router.route(body.prompt)
+                    if fallback_model and fallback_model != model_name:
+                        fb_text, fb_success, fb_error, fb_latency_ms = _call(fallback_model)
+                        if fb_success and fb_text.strip():
+                            text, success, error, latency_ms = fb_text, True, None, fb_latency_ms
+                            used_model = fallback_model
+                        else:
+                            error = error or fb_error
+                except Exception:
+                    pass
 
             if not text.strip() and error:
                 text = f"Error: {error}"
@@ -777,6 +1057,17 @@ async def compare_models(body: CompareIn):
             tokens_in = max(1, len(body.prompt) // 4)
             tokens_out = max(1, len(text) // 4)
 
+            _record_runtime_usage(
+                agent="generator",
+                model_name=used_model,
+                prompt=body.prompt,
+                response_text=text,
+                cost_usd=0.0,
+                success=success,
+                latency_ms=latency_ms,
+                endpoint="compare",
+            )
+
             return {
                 "model": model_name,
                 "answer": text,
@@ -789,6 +1080,7 @@ async def compare_models(body: CompareIn):
                     "costUsd": 0.0,
                     "status": "success" if success else "error",
                     "error": error,
+                    "usedModel": used_model,
                 },
             }
         except Exception as e:
@@ -804,7 +1096,7 @@ async def compare_models(body: CompareIn):
             }
 
     results = []
-    max_workers = min(4, len(requested_models)) if requested_models else 1
+    max_workers = min(2, len(requested_models)) if requested_models else 1
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = [pool.submit(_query_model_fallback, model_name) for model_name in requested_models]
         for fut in as_completed(futures):
@@ -892,6 +1184,62 @@ def _format_comparison_report(report_dict: dict, prompt: str, models: List[str])
                 },
             })
 
+            try:
+                if backend.model_selector:
+                    from utils.model_selector import AgentType
+                    in_tok = max(1, len(prompt) // 4)
+                    out_tok = max(1, len(response_text) // 4)
+                    backend.model_selector.record_usage(
+                        agent_type=AgentType.GENERATOR,
+                        model_name=model_name,
+                        input_tokens=in_tok,
+                        output_tokens=out_tok,
+                        metadata={"endpoint": "compare", "success": success},
+                    )
+            except Exception:
+                pass
+
+            try:
+                if backend.smart_router:
+                    backend.smart_router.record_feedback(
+                        prompt=prompt,
+                        model_used=model_name,
+                        quality_score=float(composite),
+                        latency_seconds=float(latency_ms) / 1000.0,
+                        cost_usd=float(r.get("cost_estimate", 0) or 0),
+                        success=bool(success),
+                    )
+            except Exception:
+                pass
+
+            try:
+                if backend.model_selector:
+                    from utils.model_selector import AgentType
+                    in_tok = max(1, len(prompt) // 4)
+                    out_tok = max(1, len(response_text) // 4)
+                    backend.model_selector.record_usage(
+                        agent_type=AgentType.GENERATOR,
+                        model_name=model_name,
+                        input_tokens=in_tok,
+                        output_tokens=out_tok,
+                        metadata={"endpoint": "compare", "success": success},
+                    )
+            except Exception:
+                pass
+
+            try:
+                if backend.smart_router:
+                    backend.smart_router.record_feedback(
+                        prompt=prompt,
+                        model_used=model_name,
+                        quality_score=float(composite),
+                        latency_seconds=float(latency_ms) / 1000.0,
+                        cost_usd=float(r.get("cost_estimate", 0) or 0),
+                        success=bool(success),
+                    )
+            except Exception:
+                pass
+
     results.sort(key=lambda x: x["compositeScore"], reverse=True)
     return {
         "results": results,
@@ -947,6 +1295,44 @@ def _score_comparison_response(prompt: str, response_text: str, success: bool, l
     )
 
     return {"scores": scores, "compositeScore": round(composite, 1)}
+
+
+def _record_runtime_usage(agent: str, model_name: str, prompt: str, response_text: str, cost_usd: float, success: bool, latency_ms: float, endpoint: str):
+    """Best-effort unified telemetry recording for charts and router stats."""
+    try:
+        if backend.model_selector:
+            from utils.model_selector import AgentType
+            agent_map = {
+                "generator": AgentType.GENERATOR,
+                "judge": AgentType.JUDGE,
+                "optimizer": AgentType.OPTIMIZER,
+            }
+            agent_type = agent_map.get(agent, AgentType.GENERATOR)
+            in_tok = max(1, len(prompt) // 4)
+            out_tok = max(1, len(response_text) // 4)
+            backend.model_selector.record_usage(
+                agent_type=agent_type,
+                model_name=model_name,
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                metadata={"endpoint": endpoint, "success": success},
+            )
+    except Exception:
+        pass
+
+    try:
+        if backend.smart_router:
+            quality = _score_comparison_response(prompt, response_text, success, latency_ms).get("compositeScore", 0)
+            backend.smart_router.record_feedback(
+                prompt=prompt,
+                model_used=model_name,
+                quality_score=float(quality),
+                latency_seconds=float(latency_ms) / 1000.0,
+                cost_usd=float(cost_usd or 0.0),
+                success=bool(success),
+            )
+    except Exception:
+        pass
 
 
 # ── Sessions ─────────────────────────────────────────────────────────────────
@@ -1029,12 +1415,21 @@ async def start_optimization(body: OptimizationConfigIn):
         "finalScore": 0,
         "improvement": 0,
         "converged": False,
-        "model": body.generatorModel or body.model or "Qwen/Qwen2.5-72B-Instruct",
+        "model": body.generatorModel or body.model or ("claude-3-opus" if os.getenv("ANTHROPIC_API_KEY") else "Qwen/Qwen2.5-72B-Instruct"),
         "totalCost": 0,
         "questionsCount": 0,
         "durationSeconds": 0,
     }
     backend.sessions_db.append(session)
+    backend.session_progress[session_id] = {
+        "status": "running",
+        "phase": "initializing",
+        "iteration": 0,
+        "totalIterations": body.maxIterations or 10,
+        "elapsedSeconds": 0.0,
+        "etaSeconds": None,
+        "lastUpdate": datetime.now().isoformat(),
+    }
 
     # Get questions to use
     questions = []
@@ -1047,11 +1442,19 @@ async def start_optimization(body: OptimizationConfigIn):
         # Use first 5 questions
         questions = [q["question"] for q in backend.questions_db[:5]]
 
+    # Merge custom questions from the frontend
+    if body.customQuestions:
+        for cq in body.customQuestions:
+            cq = cq.strip()
+            if cq and cq not in questions:
+                questions.append(cq)
+
     session["questionsCount"] = len(questions)
 
     # Run optimization in background
     asyncio.create_task(_run_optimization_task(session_id, questions, body))
 
+    _save_sessions_to_disk()
     return {"sessionId": session_id}
 
 
@@ -1069,6 +1472,7 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
     session["questionsCount"] = len(questions)
 
     start_time = datetime.now()
+    progress_task = asyncio.create_task(_progress_heartbeat(session_id, start_time, config.maxIterations or 10))
     try:
         # Try to use LangGraph orchestrator
         from agents import LANGCHAIN_AVAILABLE
@@ -1083,6 +1487,15 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
             temperature = config.temperature or 0.7
             max_tokens = config.maxTokens or 500
 
+            # Speed mode for tiny runs: use faster open-source models to keep UX responsive.
+            speed_mode_applied = False
+            if len(questions) <= 1 and ("72B" in gen_model or "32B" in gen_model):
+                gen_model = "meta-llama/Meta-Llama-3-8B-Instruct"
+                judge_model = "meta-llama/Meta-Llama-3-8B-Instruct"
+                opt_model = "meta-llama/Meta-Llama-3-8B-Instruct"
+                max_tokens = min(max_tokens, 320)
+                speed_mode_applied = True
+
             orchestrator = create_langchain_orchestrator(
                 generator_model=gen_model,
                 judge_model=judge_model,
@@ -1092,8 +1505,8 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
                 enable_langsmith=False,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                judge_max_tokens=500,
-                optimizer_max_tokens=900,
+                judge_max_tokens=320,
+                optimizer_max_tokens=600,
             )
 
             initial_prompt = config.initialPrompt
@@ -1122,6 +1535,7 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
                 "maxTokens": max_tokens,
                 "templateId": config.templateId or "custom",
                 "questionsCount": len(questions),
+                "speedModeApplied": speed_mode_applied,
             }
 
             results = await asyncio.get_running_loop().run_in_executor(
@@ -1147,6 +1561,17 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
             backend.session_results[session_id] = results
             backend.session_results[session_id]["duration_seconds"] = duration
             backend.session_results[session_id]["timestamp"] = start_time.isoformat()
+            backend.session_progress[session_id] = {
+                "status": "completed",
+                "phase": "complete",
+                "iteration": results.get("iterations", 0),
+                "totalIterations": config.maxIterations or 10,
+                "elapsedSeconds": duration,
+                "etaSeconds": 0,
+                "lastUpdate": datetime.now().isoformat(),
+            }
+
+            _save_sessions_to_disk()
 
             # Notify connected WebSocket clients
             await _broadcast_ws(session_id, {
@@ -1155,13 +1580,68 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
             })
         else:
             session["status"] = "error"
+            backend.session_progress[session_id] = {
+                "status": "error",
+                "phase": "error",
+                "iteration": 0,
+                "totalIterations": config.maxIterations or 10,
+                "elapsedSeconds": (datetime.now() - start_time).total_seconds(),
+                "etaSeconds": None,
+                "lastUpdate": datetime.now().isoformat(),
+            }
             await _broadcast_ws(session_id, {"type": "error", "data": {"agent": "orchestrator", "message": "LangChain not available", "recoverable": False}})
 
     except Exception as e:
         logger.error(f"Optimization error for {session_id}: {e}")
         logger.error(traceback.format_exc())
         session["status"] = "error"
+        backend.session_progress[session_id] = {
+            "status": "error",
+            "phase": "error",
+            "iteration": 0,
+            "totalIterations": config.maxIterations or 10,
+            "elapsedSeconds": (datetime.now() - start_time).total_seconds(),
+            "etaSeconds": None,
+            "lastUpdate": datetime.now().isoformat(),
+        }
         await _broadcast_ws(session_id, {"type": "error", "data": {"agent": "orchestrator", "message": str(e), "recoverable": False}})
+    finally:
+        if progress_task:
+            progress_task.cancel()
+
+
+async def _progress_heartbeat(session_id: str, start_time: datetime, total_iterations: int):
+    """Emit lightweight phase updates while optimization is running.
+
+    This provides visible intermediate progress even when the underlying
+    orchestrator only returns final results at completion.
+    """
+    phases = ["generation", "evaluation", "optimization"]
+    tick = 0
+    while True:
+        await asyncio.sleep(2)
+        session = next((s for s in backend.sessions_db if s["sessionId"] == session_id), None)
+        if not session or session.get("status") != "running":
+            return
+
+        elapsed = max((datetime.now() - start_time).total_seconds(), 0.0)
+        # Heuristic pacing: ~14s per iteration by default.
+        est_iter = min(total_iterations, max(0, int(elapsed // 14)))
+        phase = phases[tick % len(phases)]
+        eta = max(0.0, (total_iterations - est_iter) * 14.0)
+
+        progress = {
+            "status": "running",
+            "phase": phase,
+            "iteration": est_iter,
+            "totalIterations": total_iterations,
+            "elapsedSeconds": round(elapsed, 1),
+            "etaSeconds": round(eta, 1),
+            "lastUpdate": datetime.now().isoformat(),
+        }
+        backend.session_progress[session_id] = progress
+        await _broadcast_ws(session_id, {"type": "iteration_start", "data": progress})
+        tick += 1
 
 
 def _build_optimization_results(session_id: str, results: dict, duration: float) -> dict:
@@ -1219,6 +1699,26 @@ async def get_optimization_results(session_id: str):
     return _build_optimization_results(session_id, raw, duration)
 
 
+@app.get("/api/optimize/{session_id}/progress")
+async def get_optimization_progress(session_id: str):
+    """Get lightweight intermediate progress for long-running optimization."""
+    await backend.ensure_initialized()
+    session = next((s for s in backend.sessions_db if s["sessionId"] == session_id), None)
+    if session is None:
+        raise HTTPException(404, "Session not found")
+
+    progress = backend.session_progress.get(session_id, {
+        "status": session.get("status", "unknown"),
+        "phase": "unknown",
+        "iteration": 0,
+        "totalIterations": session.get("totalIterations", 0),
+        "elapsedSeconds": session.get("durationSeconds", 0),
+        "etaSeconds": None,
+        "lastUpdate": datetime.now().isoformat(),
+    })
+    return progress
+
+
 @app.post("/api/optimize/stop/{session_id}")
 async def stop_optimization(session_id: str):
     """Stop a running optimization (best-effort)."""
@@ -1242,14 +1742,32 @@ async def get_router_stats():
     try:
         stats = backend.smart_router.get_router_stats() if hasattr(backend.smart_router, "get_router_stats") else {}
         if isinstance(stats, dict):
+            per_model = stats.get("models", {})
+            model_usage = [
+                {"model": name, "count": int(m.get("uses", 0))}
+                for name, m in per_model.items()
+            ]
+            model_usage.sort(key=lambda x: x["count"], reverse=True)
+
+            uses = [float(m.get("uses", 0)) for m in per_model.values()]
+            weighted_scores = [float(m.get("avg_score", 0)) * float(m.get("uses", 0)) for m in per_model.values()]
+            total_uses = sum(uses)
+            avg_score = (sum(weighted_scores) / total_uses) if total_uses > 0 else 0.0
+
+            # Compute avg latency from feedback history if available.
+            avg_latency_ms = 0.0
+            fb = getattr(backend.smart_router, "feedback_history", [])
+            if fb:
+                avg_latency_ms = sum(float(x.latency_seconds) for x in fb) / len(fb) * 1000
+
             return {
-                "total_routings": stats.get("total_routings", 0),
-                "totalRoutings": stats.get("total_routings", 0),
-                "total_cost": stats.get("total_cost", 0),
-                "avgScore": stats.get("avg_score", 0),
-                "avgLatency": stats.get("avg_latency", 0),
-                "modelUsage": stats.get("model_usage", []),
-                "per_model": stats.get("per_model", {}),
+                "total_routings": int(stats.get("total_routings", 0)),
+                "totalRoutings": int(stats.get("total_routings", 0)),
+                "total_cost": float(stats.get("total_cost", 0.0)),
+                "avgScore": round(avg_score, 2),
+                "avgLatency": round(avg_latency_ms, 1),
+                "modelUsage": model_usage,
+                "per_model": per_model,
             }
     except Exception as e:
         logger.warning(f"Router stats error: {e}")
@@ -1455,7 +1973,16 @@ async def test_question(question_id: str, body: QuestionTestIn):
     )
     full_prompt = template.render(q["question"])
 
-    model = body.model or "Qwen/Qwen2.5-72B-Instruct"
+    # Add context engineering to test runs as well for consistent behavior.
+    context_used = _build_context_pack(q["question"], category)
+    if context_used and context_used.get("contextText"):
+        full_prompt = (
+            f"{context_used['contextText']}\n\n"
+            f"Use this context only when relevant and keep facts grounded.\n\n"
+            f"{full_prompt}"
+        )
+
+    model = body.model or ("claude-3-opus" if os.getenv("ANTHROPIC_API_KEY") else "Qwen/Qwen2.5-72B-Instruct")
 
     try:
         result = await asyncio.get_running_loop().run_in_executor(
@@ -1477,16 +2004,19 @@ async def test_question(question_id: str, body: QuestionTestIn):
     evaluation = None
     ground_truth = q.get("groundTruth", "")
     if ground_truth:
-        evaluation = {
-            "hasGroundTruth": True,
-            "groundTruth": ground_truth,
-            "matchScore": _simple_match_score(response_text, ground_truth),
-        }
+        evaluation = _evaluate_response_against_ground_truth(response_text, ground_truth)
     else:
-        evaluation = {"hasGroundTruth": False, "groundTruth": "", "matchScore": None}
+        evaluation = {
+            "hasGroundTruth": False,
+            "groundTruth": "",
+            "matchScore": None,
+            "verdict": "NO_GROUND_TRUTH",
+            "notes": ["Add ground truth to enable reliability scoring."],
+        }
 
     tokens_est = max(1, len(full_prompt) // 4)
     output_tokens_est = max(1, len(response_text) // 4)
+    cost_est_usd = _estimate_cost_usd(model, tokens_est, output_tokens_est)
 
     return {
         "question": q["question"],
@@ -1498,12 +2028,14 @@ async def test_question(question_id: str, body: QuestionTestIn):
         "templateUsed": template.id,
         "templateName": template.name,
         "promptUsed": full_prompt,
+        "context": context_used,
         "evaluation": evaluation,
         "metadata": {
             "model": model,
             "tokens_used": tokens_est + output_tokens_est,
             "input_tokens": tokens_est,
             "output_tokens": output_tokens_est,
+            "cost_usd": cost_est_usd,
             "latency_ms": latency * 1000,
             "temperature": body.temperature or 0.7,
             "maxTokens": body.maxTokens or 500,
@@ -1513,18 +2045,235 @@ async def test_question(question_id: str, body: QuestionTestIn):
 
 
 def _simple_match_score(response: str, ground_truth: str) -> float:
-    """Simple overlap scoring between response and ground truth."""
-    response_words = set(response.lower().split())
-    truth_words = set(ground_truth.lower().split())
-    if not truth_words:
-        return 0.0
-    overlap = response_words & truth_words
-    precision = len(overlap) / len(response_words) if response_words else 0
-    recall = len(overlap) / len(truth_words)
-    if precision + recall == 0:
-        return 0.0
-    f1 = 2 * (precision * recall) / (precision + recall)
-    return round(min(f1 * 12, 10.0), 1)  # Scale to 0-10
+    """Backward-compatible score wrapper used by older callers."""
+    evaluation = _evaluate_response_against_ground_truth(response, ground_truth)
+    return float(evaluation.get("matchScore") or 0.0)
+
+
+_STOPWORDS = {
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being", "to", "of", "in", "on",
+    "for", "with", "as", "at", "by", "and", "or", "if", "then", "than", "that", "this", "it", "its",
+    "from", "into", "about", "over", "under", "between", "also", "can", "could", "should", "would",
+    "do", "does", "did", "have", "has", "had", "will", "may", "might", "not", "no", "yes", "your",
+    "you", "we", "they", "their", "our", "he", "she", "his", "her", "them", "which", "what", "when",
+    "where", "why", "how", "who", "whom", "whose"
+}
+
+
+def _tokenize_text(text: str) -> List[str]:
+    return re.findall(r"\b[a-zA-Z0-9_]+\b", (text or "").lower())
+
+
+def _keywords(text: str) -> List[str]:
+    return [t for t in _tokenize_text(text) if len(t) > 2 and t not in _STOPWORDS]
+
+
+def _evaluate_response_against_ground_truth(response: str, ground_truth: str) -> dict:
+    """Richer evaluation than plain overlap for Question Bank testing.
+
+    Combines lexical overlap, sequence similarity, and key-concept coverage.
+    Returns a 0-10 score plus detailed sub-metrics so the UI can explain why.
+    """
+    response = response or ""
+    ground_truth = ground_truth or ""
+    if not ground_truth.strip():
+        return {"hasGroundTruth": False, "groundTruth": "", "matchScore": None}
+
+    r_all = _tokenize_text(response)
+    g_all = _tokenize_text(ground_truth)
+    r_kw = set(_keywords(response))
+    g_kw = set(_keywords(ground_truth))
+
+    if not g_kw:
+        seq = SequenceMatcher(None, response.lower(), ground_truth.lower()).ratio()
+        score = round(min(max(seq * 10.0, 0.0), 10.0), 1)
+        return {
+            "hasGroundTruth": True,
+            "groundTruth": ground_truth,
+            "matchScore": score,
+            "verdict": "GOOD" if score >= 7.0 else "WEAK",
+            "details": {
+                "keywordPrecision": 0.0,
+                "keywordRecall": 0.0,
+                "keywordF1": 0.0,
+                "sequenceSimilarity": round(seq, 3),
+                "conceptCoverage": 0.0,
+            },
+            "notes": [],
+        }
+
+    overlap = r_kw & g_kw
+    precision = len(overlap) / max(1, len(r_kw))
+    recall = len(overlap) / max(1, len(g_kw))
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+
+    seq = SequenceMatcher(None, response.lower(), ground_truth.lower()).ratio()
+    concept_coverage = len(overlap) / max(1, len(g_kw))
+
+    # Penalize obvious verbosity mismatch (answer too short vs truth detail).
+    brevity_ratio = len(r_all) / max(1, len(g_all))
+    brevity_penalty = 0.0
+    if brevity_ratio < 0.45:
+        brevity_penalty = min((0.45 - brevity_ratio) * 4.0, 1.5)
+
+    composite = (
+        0.45 * f1
+        + 0.25 * seq
+        + 0.30 * concept_coverage
+    ) * 10.0 - brevity_penalty
+    match_score = round(min(max(composite, 0.0), 10.0), 1)
+
+    notes: List[str] = []
+    if recall < 0.5:
+        notes.append("Missing several key concepts from the ground truth.")
+    if precision < 0.45:
+        notes.append("Includes many terms not aligned with expected answer.")
+    if brevity_penalty > 0:
+        notes.append("Answer may be too short to cover expected depth.")
+
+    if match_score >= 8.0:
+        verdict = "STRONG"
+    elif match_score >= 6.0:
+        verdict = "GOOD"
+    elif match_score >= 4.0:
+        verdict = "PARTIAL"
+    else:
+        verdict = "WEAK"
+
+    return {
+        "hasGroundTruth": True,
+        "groundTruth": ground_truth,
+        "matchScore": match_score,
+        "verdict": verdict,
+        "details": {
+            "keywordPrecision": round(precision, 3),
+            "keywordRecall": round(recall, 3),
+            "keywordF1": round(f1, 3),
+            "sequenceSimilarity": round(seq, 3),
+            "conceptCoverage": round(concept_coverage, 3),
+            "brevityRatio": round(brevity_ratio, 3),
+        },
+        "notes": notes,
+    }
+
+
+def _build_context_pack(question: str, category: str, max_items: int = 3) -> Optional[dict]:
+    """Build a small context pack from existing question bank entries.
+
+    This is lightweight context engineering: retrieve nearby examples and
+    known ground-truth snippets in the same category to reduce hallucinations.
+    """
+    q_words = set(_keywords(question))
+    if not q_words:
+        return None
+
+    scored: List[tuple] = []
+    for item in backend.questions_db:
+        item_q = item.get("question", "")
+        if not item_q or item_q.strip().lower() == question.strip().lower():
+            continue
+        if category and item.get("category") != category:
+            continue
+
+        item_words = set(_keywords(item_q))
+        if not item_words:
+            continue
+        overlap = len(q_words & item_words)
+        if overlap <= 0:
+            continue
+        score = overlap / max(1, len(q_words | item_words))
+        scored.append((score, item))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    picked = scored[:max_items]
+
+    snippets = []
+    related = []
+    for _, item in picked:
+        q_txt = item.get("question", "")
+        gt_txt = (item.get("groundTruth") or "").strip()
+        related.append({"id": item.get("id"), "question": q_txt, "hasGroundTruth": bool(gt_txt)})
+        if gt_txt:
+            snippets.append(f"- Related fact: {gt_txt[:220]}")
+        else:
+            snippets.append(f"- Related question: {q_txt[:180]}")
+
+    context_text = "\n".join([
+        "Context Pack (retrieved from internal question bank):",
+        *snippets,
+        "Use only relevant facts; if uncertain, explicitly say uncertainty.",
+    ])
+
+    return {
+        "category": category,
+        "related": related,
+        "contextText": context_text,
+    }
+
+
+def _estimate_cost_usd(model_name: str, input_tokens: int, output_tokens: int) -> float:
+    """Estimate request cost from SmartRouter profiles if available."""
+    try:
+        if backend.smart_router and hasattr(backend.smart_router, "profiles"):
+            profile = backend.smart_router.profiles.get(model_name)
+            if profile:
+                cost = (input_tokens / 1000.0) * float(profile.cost_input_per_1k)
+                cost += (output_tokens / 1000.0) * float(profile.cost_output_per_1k)
+                return round(max(cost, 0.0), 6)
+    except Exception:
+        pass
+    return 0.0
+
+
+def _aggregate_daily_cost_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Aggregate usage records into CostTrackingPage-compatible daily rows."""
+    daily: Dict[str, Dict[str, Any]] = {}
+
+    for r in records:
+        ts = str(r.get("timestamp") or datetime.now().isoformat())
+        date_key = ts[:10]
+        agent = str(r.get("agent_type") or "generator").lower()
+        cost = float(r.get("cost") or 0.0)
+        in_tok = int(r.get("input_tokens") or 0)
+        out_tok = int(r.get("output_tokens") or 0)
+
+        row = daily.setdefault(date_key, {
+            "date": date_key,
+            "totalCost": 0.0,
+            "generatorCost": 0.0,
+            "judgeCost": 0.0,
+            "optimizerCost": 0.0,
+            "tokensUsed": 0,
+            "requests": 0,
+        })
+
+        row["totalCost"] += cost
+        row["tokensUsed"] += in_tok + out_tok
+        row["requests"] += 1
+
+        if agent == "judge":
+            row["judgeCost"] += cost
+        elif agent == "optimizer":
+            row["optimizerCost"] += cost
+        else:
+            row["generatorCost"] += cost
+
+    rows = []
+    for k in sorted(daily.keys()):
+        d = daily[k]
+        rows.append({
+            "date": d["date"],
+            "totalCost": round(float(d["totalCost"]), 6),
+            "generatorCost": round(float(d["generatorCost"]), 6),
+            "judgeCost": round(float(d["judgeCost"]), 6),
+            "optimizerCost": round(float(d["optimizerCost"]), 6),
+            "tokensUsed": int(d["tokensUsed"]),
+            "requests": int(d["requests"]),
+        })
+    return rows
 
 
 # ── Smart Router Explain ──────────────────────────────────────────────────────

@@ -85,8 +85,8 @@ export default function QuestionBankPage() {
           question: '', questionId: id, category: '', difficulty: '',
           answer: `Error: ${err?.response?.data?.detail || err?.message || 'Test failed'}`,
           fullResponse: '', templateUsed: '', templateName: '', promptUsed: '',
-          evaluation: { hasGroundTruth: false, groundTruth: '', matchScore: null },
-          metadata: { model: 'N/A', tokens_used: 0, input_tokens: 0, output_tokens: 0, latency_ms: 0, temperature: 0, maxTokens: 0, timestamp: '' },
+          evaluation: { hasGroundTruth: false, groundTruth: '', matchScore: null, verdict: 'NO_GROUND_TRUTH', notes: [] },
+          metadata: { model: 'N/A', tokens_used: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, latency_ms: 0, temperature: 0, maxTokens: 0, timestamp: '' },
         },
       }))
       setExpandedId(id)
@@ -110,6 +110,15 @@ export default function QuestionBankPage() {
               <Plus size={14} /> Add Question
             </button>
           </div>
+        </motion.div>
+
+        <motion.div variants={fadeUp} className="mb-4">
+          <Card>
+            <div className="text-sm text-text-secondary">
+              Use <span className="text-text-primary font-medium">Test</span> on any question to measure answer quality against ground truth.
+              Score now combines keyword precision/recall, concept coverage, and response quality notes.
+            </div>
+          </Card>
         </motion.div>
 
         {/* Stats Panel */}
@@ -287,6 +296,9 @@ export default function QuestionBankPage() {
                                 Match: {testResults[q.id].evaluation.matchScore}/10
                               </Badge>
                             )}
+                            {testResults[q.id].evaluation.verdict && (
+                              <Badge variant="muted">{testResults[q.id].evaluation.verdict}</Badge>
+                            )}
                             <Badge variant="muted">{testResults[q.id].templateName}</Badge>
                           </div>
                         </div>
@@ -296,8 +308,39 @@ export default function QuestionBankPage() {
                         <div className="flex items-center gap-3 mt-2 text-[10px] text-text-muted font-mono">
                           <span>{testResults[q.id].metadata.model.split('/').pop()}</span>
                           <span>{testResults[q.id].metadata.tokens_used} tokens</span>
+                          <span>${(testResults[q.id].metadata.cost_usd || 0).toFixed(6)}</span>
                           <span>{testResults[q.id].metadata.latency_ms.toFixed(0)}ms</span>
                         </div>
+
+                        {testResults[q.id].evaluation.details && (
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] font-mono text-text-muted">
+                            <div className="bg-surface-secondary rounded px-2 py-1">F1: {((testResults[q.id].evaluation.details?.keywordF1 || 0) * 100).toFixed(1)}%</div>
+                            <div className="bg-surface-secondary rounded px-2 py-1">Coverage: {((testResults[q.id].evaluation.details?.conceptCoverage || 0) * 100).toFixed(1)}%</div>
+                            <div className="bg-surface-secondary rounded px-2 py-1">Precision: {((testResults[q.id].evaluation.details?.keywordPrecision || 0) * 100).toFixed(1)}%</div>
+                            <div className="bg-surface-secondary rounded px-2 py-1">Recall: {((testResults[q.id].evaluation.details?.keywordRecall || 0) * 100).toFixed(1)}%</div>
+                          </div>
+                        )}
+
+                        {testResults[q.id].evaluation.notes?.length ? (
+                          <div className="mt-2 space-y-1">
+                            {testResults[q.id].evaluation.notes?.map((n, ni) => (
+                              <div key={ni} className="text-[11px] text-amber-300">• {n}</div>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {(testResults[q.id]?.context?.related?.length || 0) > 0 && (
+                          <div className="mt-2 pt-2 border-t border-border">
+                            <div className="text-[10px] font-mono text-text-muted uppercase mb-1">Context Used</div>
+                            <div className="space-y-1">
+                              {testResults[q.id]?.context?.related?.slice(0, 3).map((c, ci) => (
+                                <div key={`${c.id || ci}`} className="text-[11px] text-text-secondary bg-surface-secondary rounded px-2 py-1">
+                                  {c.question}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </motion.div>
                     )}
                   </Card>

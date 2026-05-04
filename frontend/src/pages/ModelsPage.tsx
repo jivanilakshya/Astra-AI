@@ -14,16 +14,30 @@ export default function ModelsPage() {
   const [models, setModels] = useState<ModelProfile[]>([])
   const [router, setRouter] = useState<RouterStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([getModels(), getRouterStats()]).then(([m, r]) => {
-      setModels(m)
-      setRouter(r)
-      setLoading(false)
-    })
+    Promise.all([getModels(), getRouterStats()])
+      .then(([m, r]) => {
+        setModels(Array.isArray(m) ? m : [])
+        setRouter(r)
+        setLoading(false)
+      })
+      .catch(err => {
+        setError(err?.message || 'Failed to load models')
+        setLoading(false)
+      })
   }, [])
 
   if (loading) return <div className="page-container"><SkeletonLoader rows={6} /></div>
+  if (error) return (
+    <div className="page-container">
+      <div className="text-center py-16">
+        <h2 className="text-xl text-text-primary mb-2">Failed to Load Models</h2>
+        <p className="text-text-muted text-sm">{error}</p>
+      </div>
+    </div>
+  )
 
   const activeCount = models.filter(m => m.status === 'available').length
 
@@ -72,6 +86,12 @@ export default function ModelsPage() {
                 </div>
               </div>
 
+              {router.totalRoutings === 0 && (
+                <div className="rounded-button border border-border p-3 text-sm text-text-secondary mb-3">
+                  No routing telemetry yet. Use Ask Question or Question Bank tests to generate Smart Router data.
+                </div>
+              )}
+
               {/* Usage breakdown */}
               <div className="space-y-2">
                 {router.modelUsage.map(u => {
@@ -92,12 +112,34 @@ export default function ModelsPage() {
                   )
                 })}
               </div>
+
+              {router.per_model && Object.keys(router.per_model).length > 0 && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <h3 className="text-xs font-mono text-text-muted uppercase mb-2">Model Quality Snapshot</h3>
+                  <div className="space-y-2">
+                    {Object.entries(router.per_model).slice(0, 6).map(([name, m]) => (
+                      <div key={name} className="flex items-center justify-between text-xs">
+                        <span className="font-mono text-text-secondary truncate max-w-[45%]">{name.split('/').pop()}</span>
+                        <span className="text-text-muted">uses {m.uses}</span>
+                        <span className="text-text-muted">score {m.avg_score?.toFixed?.(1) ?? m.avg_score}</span>
+                        <span className="text-text-muted">success {(Number(m.success_rate || 0) * 100).toFixed(0)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Card>
           </motion.div>
         )}
 
         {/* Models Grid */}
         <motion.div variants={fadeUp}>
+          {models.length === 0 ? (
+            <Card className="text-center py-12">
+              <Cpu size={32} className="mx-auto mb-3 text-text-muted" />
+              <p className="text-text-muted">No models available. Check backend connection.</p>
+            </Card>
+          ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {models.map(m => (
               <motion.div
@@ -118,15 +160,15 @@ export default function ModelsPage() {
                     )}
                   </div>
 
-                  <p className="text-xs text-text-secondary mb-4 leading-relaxed">{m.description}</p>
+                  <p className="text-xs text-text-secondary mb-4 leading-relaxed">{m.description || 'No description available'}</p>
 
                   <div className="space-y-2 text-xs border-t border-border pt-3">
-                    <Row label="Provider" value={m.provider} />
-                    <Row label="Parameters" value={m.parameters} />
-                    <Row label="Context" value={`${m.contextWindow.toLocaleString()} tokens`} />
-                    <Row label="Cost / 1M tokens" value={`$${m.costPer1MTokens.toFixed(2)}`} />
-                    {m.avgLatency && <Row label="Avg Latency" value={`${m.avgLatency}ms`} />}
-                    {m.avgScore && <Row label="Avg Score" value={m.avgScore.toFixed(1)} />}
+                    <Row label="Provider" value={m.provider || '—'} />
+                    <Row label="Parameters" value={m.parameters || '—'} />
+                    <Row label="Context" value={m.contextWindow ? `${m.contextWindow.toLocaleString()} tokens` : '—'} />
+                    <Row label="Cost / 1M tokens" value={m.costPer1MTokens != null ? `$${m.costPer1MTokens.toFixed(2)}` : 'Free'} />
+                    {m.avgLatency != null && <Row label="Avg Latency" value={`${m.avgLatency}ms`} />}
+                    {m.avgScore != null && <Row label="Avg Score" value={m.avgScore.toFixed(1)} />}
                   </div>
 
                   {m.strengths && m.strengths.length > 0 && (
@@ -143,6 +185,7 @@ export default function ModelsPage() {
               </motion.div>
             ))}
           </div>
+          )}
         </motion.div>
       </motion.div>
     </div>

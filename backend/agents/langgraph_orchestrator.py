@@ -201,32 +201,51 @@ class LangGraphOrchestrator:
         generated_outputs: List[Optional[Dict[str, Any]]] = [None] * len(questions)
 
         def _generate_one(idx: int, question: str) -> tuple[int, Dict[str, Any]]:
-            try:
-                formatted_prompt = state["current_prompt"].replace("{question}", question)
-                result = self.generator.generate(
-                    model_name=self.generator_model,
-                    prompt=formatted_prompt,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens
-                )
-                return idx, {
-                    "question": question,
-                    "answer": result.get("text", ""),
-                    "explanation": result.get("text", ""),
-                    "metadata": {
-                        "latency_ms": result.get("latency_seconds", result.get("latency", 0)) * 1000,
-                        "timestamp": datetime.now().isoformat(),
-                        "status": "success" if result.get("success") else "error"
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                try:
+                    formatted_prompt = state["current_prompt"].replace("{question}", question)
+                    result = self.generator.generate(
+                        model_name=self.generator_model,
+                        prompt=formatted_prompt,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens
+                    )
+                    text = result.get("text", "") if isinstance(result, dict) else str(result)
+                    success = result.get("success", False) if isinstance(result, dict) else bool(text)
+                    if success and text.strip():
+                        return idx, {
+                            "question": question,
+                            "answer": text,
+                            "explanation": text,
+                            "metadata": {
+                                "latency_ms": result.get("latency_seconds", result.get("latency", 0)) * 1000,
+                                "timestamp": datetime.now().isoformat(),
+                                "status": "success",
+                                "attempt": attempt + 1
+                            }
+                        }
+                    # Unsuccessful but no exception — retry
+                    if attempt < max_retries:
+                        time.sleep(3)
+                        continue
+                    return idx, {
+                        "question": question,
+                        "answer": text or "(empty response)",
+                        "explanation": text or "Generation returned empty",
+                        "metadata": {"status": "error", "attempt": attempt + 1}
                     }
-                }
-            except Exception as e:
-                return idx, {
-                    "question": question,
-                    "answer": "",
-                    "explanation": f"Generation failed: {str(e)}",
-                    "error": str(e),
-                    "metadata": {"status": "error"}
-                }
+                except Exception as e:
+                    if attempt < max_retries:
+                        time.sleep(3)
+                        continue
+                    return idx, {
+                        "question": question,
+                        "answer": "",
+                        "explanation": f"Generation failed: {str(e)}",
+                        "error": str(e),
+                        "metadata": {"status": "error", "attempt": attempt + 1}
+                    }
 
         max_workers = min(self.parallel_workers, len(questions)) if questions else 1
         if len(questions) <= 1:
@@ -271,29 +290,39 @@ class LangGraphOrchestrator:
         evaluations: List[Optional[Dict[str, Any]]] = [None] * num_outputs
 
         def _evaluate_one(idx: int, output: Dict[str, Any]) -> tuple[int, Dict[str, Any]]:
-            try:
-                if output.get("metadata", {}).get("status") == "error" or not output.get("answer"):
-                    return idx, {
-                        "scores": {k: 0.0 for k in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]},
-                        "composite_score": 0.0,
-                        "feedback": {},
-                        "suggestions": ["Answer was empty or failed to generate"],
-                        "flags": ["empty_answer"],
-                        "skipped": True
-                    }
-                eval_result = self.judge.evaluate(
-                    question=output["question"],
-                    answer=output.get("answer", ""),
-                    explanation=output.get("explanation", "")
-                )
-                return idx, eval_result
-            except Exception as e:
+            if output.get("metadata", {}).get("status") == "error" or not output.get("answer"):
                 return idx, {
                     "scores": {k: 0.0 for k in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]},
                     "composite_score": 0.0,
-                    "error": str(e),
-                    "flags": ["evaluation_error"]
+                    "feedback": {},
+                    "suggestions": ["Answer was empty or failed to generate"],
+                    "flags": ["empty_answer"],
+                    "skipped": True
                 }
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                try:
+                    eval_result = self.judge.evaluate(
+                        question=output["question"],
+                        answer=output.get("answer", ""),
+                        explanation=output.get("explanation", "")
+                    )
+                    if eval_result.get("composite_score", 0) > 0:
+                        return idx, eval_result
+                    if attempt < max_retries:
+                        time.sleep(2)
+                        continue
+                    return idx, eval_result
+                except Exception as e:
+                    if attempt < max_retries:
+                        time.sleep(2)
+                        continue
+                    return idx, {
+                        "scores": {k: 0.0 for k in ["correctness", "clarity", "reasoning", "relevance", "conciseness"]},
+                        "composite_score": 0.0,
+                        "error": str(e),
+                        "flags": ["evaluation_error"]
+                    }
 
         max_workers = min(self.parallel_workers, num_outputs) if num_outputs else 1
         if num_outputs <= 1:

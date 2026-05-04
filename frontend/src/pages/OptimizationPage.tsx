@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Play, RotateCcw, CheckCircle2, ChevronDown, ChevronUp, Search, Sparkles, Eye, EyeOff, FileText, Wand2 } from 'lucide-react'
+import { Play, RotateCcw, CheckCircle2, ChevronDown, ChevronUp, Search, Sparkles, Wand2 } from 'lucide-react'
 import Card from '../components/ui/Card'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
 import ScoreBar from '../components/ui/ScoreBar'
 import Badge from '../components/ui/Badge'
 import PerformanceLineChart from '../components/charts/PerformanceLineChart'
 import ScoreRadar from '../components/charts/ScoreRadar'
-import { startOptimization, getOptimizationResults, listQuestions, getModels, listTemplates, autoSelectTemplate } from '../services/api'
+import { startOptimization, getOptimizationResults, getOptimizationProgress, listQuestions, getModels, listTemplates, autoSelectTemplate, connectOptimizationWS } from '../services/api'
 import { scoreToColor } from '../utils/formatters'
 import { CRITERIA_LABELS } from '../utils/constants'
 import type { Question, OptimizationResults, PromptTemplate } from '../types'
@@ -18,6 +18,7 @@ export default function OptimizationPage() {
   const [phase, setPhase] = useState<Phase>('setup')
   const [questions, setQuestions] = useState<Question[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [customQuestion, setCustomQuestion] = useState('')
   const [prompt, setPrompt] = useState('Answer the following question clearly and concisely.\n\nQuestion: {question}\n\nProvide a detailed explanation.\n\nAnswer:')
   const [maxIter, setMaxIter] = useState(5)
   const [model, setModel] = useState('')
@@ -29,13 +30,18 @@ export default function OptimizationPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [qSearch, setQSearch] = useState('')
   const [qCatFilter, setQCatFilter] = useState('all')
+  const [qBankError, setQBankError] = useState(false)
 
   // Running state
   const [currentIter, setCurrentIter] = useState(0)
   const [totalIter, setTotalIter] = useState(0)
   const [liveScores, setLiveScores] = useState<number[]>([])
   const [running, setRunning] = useState(false)
+  const [runningPhase, setRunningPhase] = useState('initializing')
+  const [elapsedSec, setElapsedSec] = useState(0)
+  const [etaSec, setEtaSec] = useState<number | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const wsRef = useRef<{ close: () => void; stop: () => void } | null>(null)
 
   // Results state
   const [results, setResults] = useState<OptimizationResults | null>(null)
@@ -44,13 +50,17 @@ export default function OptimizationPage() {
     listQuestions().then(q => {
       setQuestions(q)
       setSelectedIds(q.slice(0, 3).map(x => x.id))
-    })
+      setQBankError(false)
+    }).catch(() => setQBankError(true))
     getModels().then(m => {
       setModels(m)
       if (m.length > 0 && !model) setModel(m[0].id)
     })
     listTemplates().then(setTemplates)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      if (wsRef.current) wsRef.current.close()
+    }
   }, [])
 
   // Auto-select template when first selected question changes
@@ -79,29 +89,65 @@ export default function OptimizationPage() {
     }
   }
 
+  const hasCustomQ = customQuestion.trim().length > 0
+  const hasSelectedQ = selectedIds.length > 0
+  const canStart = (hasCustomQ || hasSelectedQ) && prompt.trim().length > 0
+  const effectiveQCount = hasCustomQ ? (selectedIds.length + 1) : selectedIds.length
+
   const handleStart = async () => {
     setPhase('running')
     setCurrentIter(0)
     setTotalIter(maxIter)
     setLiveScores([])
     setRunning(true)
+    setRunningPhase('initializing')
+    setElapsedSec(0)
+    setEtaSec(null)
 
     try {
+      const customQuestions = hasCustomQ ? [customQuestion.trim()] : []
       const { sessionId } = await startOptimization({
         initialPrompt: prompt,
         model,
         generatorModel: model,
         maxIterations: maxIter,
-        questionIds: selectedIds,
+        questionIds: hasSelectedQ ? selectedIds : undefined,
+        customQuestions,
         temperature,
         maxTokens,
         templateId: templateId || undefined,
-        batchSize: Math.min(selectedIds.length, 5),
+        batchSize: Math.min(effectiveQCount, 5),
+      })
+
+      wsRef.current = connectOptimizationWS(sessionId, {
+        onIterationComplete: (log) => {
+          if (typeof log?.iteration === 'number') setCurrentIter(log.iteration)
+        },
+        onComplete: (finalResults) => {
+          if (intervalRef.current) clearInterval(intervalRef.current)
+          intervalRef.current = null
+          if (wsRef.current) {
+            wsRef.current.close()
+            wsRef.current = null
+          }
+          setRunning(false)
+          setResults(finalResults)
+          setPhase('results')
+        },
+        onError: () => {},
       })
 
       const poll = setInterval(async () => {
         try {
-          const r = await getOptimizationResults(sessionId)
+          const [r, progress] = await Promise.all([
+            getOptimizationResults(sessionId),
+            getOptimizationProgress(sessionId),
+          ])
+
+          setRunningPhase(progress.phase || 'running')
+          setElapsedSec(progress.elapsedSeconds || 0)
+          setEtaSec(progress.etaSeconds)
+
           const history = r.performanceHistory ?? []
           if (history.length > 0) {
             setCurrentIter(history.length)
@@ -118,12 +164,16 @@ export default function OptimizationPage() {
           if (isDone) {
             clearInterval(poll)
             intervalRef.current = null
+            if (wsRef.current) {
+              wsRef.current.close()
+              wsRef.current = null
+            }
             setRunning(false)
             setResults(r)
             setPhase('results')
           }
         } catch { /* keep polling */ }
-      }, 4000)
+      }, 1500)
 
       intervalRef.current = poll as unknown as ReturnType<typeof setInterval>
     } catch {
@@ -146,6 +196,10 @@ export default function OptimizationPage() {
   }
 
   const handleReset = () => {
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
     setPhase('setup')
     setResults(null)
     setCurrentIter(0)
@@ -169,8 +223,8 @@ export default function OptimizationPage() {
                 <p className="text-text-secondary text-sm mt-1">Configure and run a self-improving prompt optimization</p>
               </div>
               <div className="flex items-center gap-3">
-                <Badge variant="muted">{selectedIds.length} questions</Badge>
-                <button onClick={handleStart} disabled={selectedIds.length === 0} className="btn-primary disabled:opacity-40">
+                <Badge variant="muted">{effectiveQCount} question{effectiveQCount !== 1 ? 's' : ''}</Badge>
+                <button onClick={handleStart} disabled={!canStart} className="btn-primary disabled:opacity-40">
                   <Play size={14} /> Start Optimization
                 </button>
               </div>
@@ -260,11 +314,34 @@ export default function OptimizationPage() {
               </Card>
             </div>
 
+            {/* Custom Question */}
+            <Card className="mt-6">
+              <h2 className="section-title mb-3">Custom Question (Optional)</h2>
+              <p className="text-xs text-text-muted mb-2">Type your own question here — no need to select from the bank below.</p>
+              <input
+                value={customQuestion}
+                onChange={e => setCustomQuestion(e.target.value)}
+                placeholder="e.g. What is the difference between supervised and unsupervised learning?"
+                className="input-base w-full text-sm"
+              />
+              {hasCustomQ && (
+                <p className="text-xs text-accent mt-1.5">✓ Custom question will be included in the optimization run</p>
+              )}
+            </Card>
+
             {/* Questions (from Question Bank) */}
             <Card className="mt-6">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="section-title">Select Questions from Bank ({selectedIds.length})</h2>
                 <div className="flex items-center gap-2">
+                  {qBankError && (
+                    <button
+                      onClick={() => { setQBankError(false); listQuestions().then(q => { setQuestions(q); setQBankError(false) }).catch(() => setQBankError(true)) }}
+                      className="btn-ghost text-xs text-amber-400"
+                    >
+                      <RotateCcw size={10} /> Retry
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       if (selectedIds.length === filteredQs.length) {
@@ -280,49 +357,69 @@ export default function OptimizationPage() {
                 </div>
               </div>
 
-              {/* Search + category filter */}
-              <div className="flex gap-2 mb-3">
-                <div className="relative flex-1">
-                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
-                  <input
-                    value={qSearch}
-                    onChange={e => setQSearch(e.target.value)}
-                    placeholder="Search questions..."
-                    className="input-base w-full pl-8 text-sm py-1.5"
-                  />
+              {qBankError && questions.length === 0 && (
+                <div className="text-center py-6 text-sm text-text-muted">
+                  <p>⚠ Failed to load question bank.</p>
+                  <p className="text-xs mt-1">You can still run optimization with a custom question above.</p>
                 </div>
-                <select value={qCatFilter} onChange={e => setQCatFilter(e.target.value)} className="input-base text-xs w-36">
-                  {qCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
+              )}
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-2">
-                {filteredQs.map(q => (
-                  <button
-                    key={q.id}
-                    onClick={() => toggleQuestion(q.id)}
-                    className={`text-left p-3 rounded-button border text-sm transition-colors ${
-                      selectedIds.includes(q.id)
-                        ? 'border-accent bg-accent/5 text-text-primary'
-                        : 'border-border text-text-secondary hover:border-border-strong'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-1">
-                      <span className="line-clamp-2">{q.question}</span>
-                      <Badge variant="muted" className="shrink-0 text-[10px]">{q.category}</Badge>
+              {!qBankError && (
+                <>
+                  {/* Search + category filter */}
+                  <div className="flex gap-2 mb-3">
+                    <div className="relative flex-1">
+                      <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                      <input
+                        value={qSearch}
+                        onChange={e => setQSearch(e.target.value)}
+                        placeholder="Search questions..."
+                        className="input-base w-full pl-8 text-sm py-1.5"
+                      />
                     </div>
-                  </button>
-                ))}
-              </div>
-              {selectedIds.length > 5 && (
-                <p className="text-xs text-amber-400 mt-2">Tip: More questions = longer optimization. 3-5 questions recommended for speed.</p>
+                    <select value={qCatFilter} onChange={e => setQCatFilter(e.target.value)} className="input-base text-xs w-36">
+                      {qCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-2">
+                    {filteredQs.map(q => (
+                      <button
+                        key={q.id}
+                        onClick={() => toggleQuestion(q.id)}
+                        className={`text-left p-3 rounded-button border text-sm transition-colors ${
+                          selectedIds.includes(q.id)
+                            ? 'border-accent bg-accent/5 text-text-primary'
+                            : 'border-border text-text-secondary hover:border-border-strong'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-1">
+                          <span className="line-clamp-2">{q.question}</span>
+                          <Badge variant="muted" className="shrink-0 text-[10px]">{q.category}</Badge>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedIds.length > 5 && (
+                    <p className="text-xs text-amber-400 mt-2">Tip: More questions = longer optimization. 3-5 questions recommended for speed.</p>
+                  )}
+                </>
               )}
             </Card>
           </motion.div>
         )}
 
         {phase === 'running' && (
-          <RunningView key="running" currentIter={currentIter} totalIter={totalIter} scores={liveScores} running={running} />
+          <RunningView
+            key="running"
+            currentIter={currentIter}
+            totalIter={totalIter}
+            scores={liveScores}
+            running={running}
+            phase={runningPhase}
+            elapsedSec={elapsedSec}
+            etaSec={etaSec}
+          />
         )}
 
         {phase === 'results' && results && (
@@ -335,8 +432,8 @@ export default function OptimizationPage() {
 
 /* ── Running ───────────────────────────────────────────── */
 
-function RunningView({ currentIter, totalIter, scores, running }: {
-  currentIter: number; totalIter: number; scores: number[]; running: boolean
+function RunningView({ currentIter, totalIter, scores, running, phase, elapsedSec, etaSec }: {
+  currentIter: number; totalIter: number; scores: number[]; running: boolean; phase: string; elapsedSec: number; etaSec: number | null
 }) {
   const pct = totalIter > 0 ? (currentIter / totalIter) * 100 : 0
   const lastScore = scores[scores.length - 1] ?? 0
@@ -351,10 +448,27 @@ function RunningView({ currentIter, totalIter, scores, running }: {
         />
         <h2 className="font-display text-3xl text-text-primary mb-2">Optimizing</h2>
         <p className="text-text-secondary text-sm mb-8">Iteration {currentIter} of {totalIter}</p>
+        <div className="flex items-center justify-center gap-3 mb-4 text-xs text-text-muted font-mono">
+          <span>phase: {phase}</span>
+          <span>elapsed: {elapsedSec.toFixed(0)}s</span>
+          <span>eta: {etaSec !== null ? `${etaSec.toFixed(0)}s` : 'n/a'}</span>
+        </div>
         <div className="w-full h-2 bg-surface-2 rounded-full mb-2 overflow-hidden">
           <motion.div className="h-full bg-accent rounded-full" animate={{ width: `${pct}%` }} transition={{ duration: 0.4 }} />
         </div>
         <p className="text-xs text-text-muted font-mono mb-8">{pct.toFixed(0)}% complete</p>
+
+        <div className="grid grid-cols-3 gap-2 mb-6">
+          {['generation', 'evaluation', 'optimization'].map((p) => (
+            <div
+              key={p}
+              className={`text-[11px] font-mono rounded px-2 py-1 ${phase === p ? 'bg-accent/15 text-accent' : 'bg-surface-2 text-text-muted'}`}
+            >
+              {p}
+            </div>
+          ))}
+        </div>
+
         {lastScore > 0 && (
           <Card className="text-center">
             <p className="text-xs font-mono text-text-muted uppercase mb-1">Current Score</p>
@@ -379,7 +493,6 @@ function ResultsView({ results, onReset, templates }: { results: OptimizationRes
     : results.iterationLogs.map(l => l.avgCompositeScore)
 
   const [expandedIter, setExpandedIter] = useState<number | null>(null)
-  const [showInitialPrompt, setShowInitialPrompt] = useState(false)
 
   const configInfo = results.config as any
   const templateName = configInfo?.templateId
@@ -405,13 +518,14 @@ function ResultsView({ results, onReset, templates }: { results: OptimizationRes
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
         {[
           { label: 'Initial Score', value: results.initialScore, color: scoreToColor(results.initialScore) },
           { label: 'Final Score', value: results.finalScore, color: scoreToColor(results.finalScore) },
           { label: 'Improvement', value: improvement, color: improvement > 0 ? 'var(--color-success)' : 'var(--color-danger)', prefix: improvement > 0 ? '+' : '' },
           { label: 'Iterations', value: results.iterations, color: 'var(--color-text-primary)', decimals: 0 },
           { label: 'Questions', value: configInfo?.questionsCount || 0, color: 'var(--color-text-primary)', decimals: 0 },
+          { label: 'Total Cost ($)', value: results.totalCost || 0, color: 'var(--color-text-primary)', decimals: 6 },
         ].map(m => (
           <Card key={m.label} className="text-center">
             <p className="text-xs font-mono text-text-muted uppercase mb-1">{m.label}</p>
@@ -432,6 +546,7 @@ function ResultsView({ results, onReset, templates }: { results: OptimizationRes
             <Badge variant="muted">Temp: {configInfo.temperature}</Badge>
             <Badge variant="muted">Max Tokens: {configInfo.maxTokens}</Badge>
             <Badge variant="muted">Judge: {configInfo.judgeModel?.split('/').pop()}</Badge>
+            {configInfo.speedModeApplied && <Badge variant="success">Speed Mode Applied</Badge>}
           </div>
         </Card>
       )}
@@ -463,36 +578,76 @@ function ResultsView({ results, onReset, templates }: { results: OptimizationRes
         </Card>
       )}
 
-      {/* Prompts: Initial vs Optimized */}
-      <div className="grid lg:grid-cols-2 gap-6 mb-8">
-        <Card>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="section-title">
-              <FileText size={14} className="inline mr-1" />
-              Initial Prompt
-            </h2>
-            <button onClick={() => setShowInitialPrompt(!showInitialPrompt)} className="btn-ghost text-xs">
-              {showInitialPrompt ? <EyeOff size={12} /> : <Eye size={12} />}
-              {showInitialPrompt ? ' Hide' : ' Show'}
-            </button>
-          </div>
-          {showInitialPrompt && (
-            <pre className="font-mono text-xs text-text-secondary bg-surface-2 rounded-card p-3 whitespace-pre-wrap overflow-auto max-h-48">
+      {/* Prompts: Initial vs Optimized — Side by Side */}
+      <Card className="mb-8">
+        <h2 className="section-title mb-4">Prompt Comparison</h2>
+        <div className="grid lg:grid-cols-2 gap-4">
+          {/* Initial */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono text-text-muted uppercase">Initial Prompt</span>
+              <Badge variant="danger">{results.initialScore.toFixed(1)}/10</Badge>
+            </div>
+            <pre className="font-mono text-xs text-text-secondary bg-surface-2 rounded-card p-3 whitespace-pre-wrap overflow-auto max-h-56 border border-border">
               {results.initialPrompt || results.iterationLogs[0]?.prompt || '(not recorded)'}
             </pre>
-          )}
-          {!showInitialPrompt && <p className="text-xs text-text-muted">Click Show to view the initial prompt</p>}
-        </Card>
-        <Card>
-          <h2 className="section-title mb-3">
-            <Sparkles size={14} className="inline mr-1 text-accent" />
-            Optimized Prompt
-          </h2>
-          <pre className="font-mono text-xs text-text-secondary bg-surface-2 rounded-card p-3 whitespace-pre-wrap overflow-auto max-h-48 border border-accent/20">
-            {results.finalPrompt || '(no optimized prompt)'}
-          </pre>
-        </Card>
-      </div>
+          </div>
+          {/* Optimized */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono uppercase flex items-center gap-1 text-accent"><Sparkles size={12} /> Optimized Prompt</span>
+              <Badge variant="success">{results.finalScore.toFixed(1)}/10</Badge>
+            </div>
+            <pre className="font-mono text-xs text-text-secondary bg-surface-2 rounded-card p-3 whitespace-pre-wrap overflow-auto max-h-56 border border-accent/30">
+              {results.finalPrompt || '(no optimized prompt)'}
+            </pre>
+          </div>
+        </div>
+        {improvement > 0 && (
+          <div className="mt-3 pt-3 border-t border-border text-center">
+            <span className="text-sm font-mono text-success">▲ +{improvement.toFixed(1)} score improvement across {results.iterations} iterations</span>
+          </div>
+        )}
+      </Card>
+
+      {/* First vs Last Answer Comparison */}
+      {results.iterationLogs.length >= 2 && (() => {
+        const firstLog = results.iterationLogs[0]
+        const lastLog2 = results.iterationLogs[results.iterationLogs.length - 1]
+        const firstAnswer = firstLog?.generatedOutputs?.[0]
+        const lastAnswer = lastLog2?.generatedOutputs?.[0]
+        if (!firstAnswer && !lastAnswer) return null
+        return (
+          <Card className="mb-8">
+            <h2 className="section-title mb-4">Answer Comparison (Q1)</h2>
+            <p className="text-xs text-text-muted mb-3">{firstAnswer?.question || lastAnswer?.question}</p>
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-mono text-text-muted uppercase">Iteration 1 Answer</span>
+                  <Badge variant={firstLog?.avgCompositeScore >= 7 ? 'success' : 'warn'}>
+                    {(firstLog?.avgCompositeScore || firstLog?.score || 0).toFixed(1)}
+                  </Badge>
+                </div>
+                <div className="bg-surface-2 rounded p-3 text-xs text-text-secondary whitespace-pre-wrap max-h-48 overflow-auto border border-border">
+                  {firstAnswer?.answer || firstAnswer?.explanation || '(empty)'}
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-mono text-accent uppercase flex items-center gap-1"><Sparkles size={10} /> Final Answer</span>
+                  <Badge variant={lastLog2?.avgCompositeScore >= 7 ? 'success' : 'warn'}>
+                    {(lastLog2?.avgCompositeScore || lastLog2?.score || 0).toFixed(1)}
+                  </Badge>
+                </div>
+                <div className="bg-surface-2 rounded p-3 text-xs text-text-secondary whitespace-pre-wrap max-h-48 overflow-auto border border-accent/30">
+                  {lastAnswer?.answer || lastAnswer?.explanation || '(empty)'}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )
+      })()}
 
       {/* Iteration Details with full answers */}
       <Card className="mb-8">

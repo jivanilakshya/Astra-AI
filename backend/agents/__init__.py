@@ -1,7 +1,9 @@
 """Agents module - Contains all agent implementations."""
 
-# HuggingFace provider (always available)
-from agents.huggingface_provider import HuggingFaceProvider
+try:
+    from agents.huggingface_provider import HuggingFaceProvider
+except Exception:
+    HuggingFaceProvider = None
 
 # LangChain agents (primary)
 try:

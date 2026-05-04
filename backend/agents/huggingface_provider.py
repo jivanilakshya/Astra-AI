@@ -35,11 +35,14 @@ except ImportError:
 AVAILABLE_MODELS: List[Dict[str, str]] = [
     {"id": "meta-llama/Meta-Llama-3-8B-Instruct",      "name": "Llama 3 8B Instruct",      "tier": "Recommended"},
     {"id": "mistralai/Mistral-7B-Instruct-v0.3",       "name": "Mistral 7B Instruct v0.3",  "tier": "Legacy"},  # may be deprecated
+    {"id": "mistralai/Mixtral-8x7B-Instruct-v0.1",     "name": "Mixtral 8x7B Instruct",      "tier": "Premium"},
     {"id": "Qwen/Qwen2.5-72B-Instruct",                "name": "Qwen 2.5 72B Instruct",    "tier": "Premium"},
     {"id": "Qwen/Qwen2.5-Coder-32B-Instruct",          "name": "Qwen 2.5 Coder 32B",       "tier": "Premium"},
     {"id": "Qwen/Qwen2.5-7B-Instruct",                 "name": "Qwen 2.5 7B Instruct",     "tier": "Good"},
+    {"id": "Qwen/Qwen2.5-14B-Instruct",                "name": "Qwen 2.5 14B Instruct",    "tier": "Good"},
     {"id": "meta-llama/Llama-3.2-3B-Instruct",         "name": "Llama 3.2 3B Instruct",    "tier": "Good"},
     {"id": "meta-llama/Llama-3.2-1B-Instruct",         "name": "Llama 3.2 1B Instruct",    "tier": "Lightweight"},
+    {"id": "microsoft/Phi-3-mini-4k-instruct",         "name": "Phi-3 Mini 4K Instruct",   "tier": "Lightweight"},
 ]
 
 
@@ -75,6 +78,35 @@ class HuggingFaceProvider:
         """Generate text using HuggingFace with retry logic for transient errors."""
         start_time = time.time()
         last_error = None
+
+        if model_name.lower().startswith("claude-"):
+            anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+            if anthropic_key:
+                try:
+                    import anthropic
+
+                    client = anthropic.Anthropic(api_key=anthropic_key)
+                    response = client.messages.create(
+                        model=model_name,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        system=kwargs.get("system", "You are a helpful assistant."),
+                        messages=[{"role": "user", "content": prompt}],
+                    )
+                    latency = time.time() - start_time
+                    text = response.content[0].text if response.content else ""
+                    return {
+                        "text": text.strip(),
+                        "model": model_name,
+                        "provider": "anthropic",
+                        "latency_seconds": latency,
+                        "success": True,
+                        "tokens_used": getattr(response.usage, "input_tokens", 0) + getattr(response.usage, "output_tokens", 0),
+                    }
+                except Exception as e:
+                    last_error = e
+            else:
+                last_error = RuntimeError("ANTHROPIC_API_KEY is required for Claude models")
         
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:

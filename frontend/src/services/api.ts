@@ -26,6 +26,118 @@ const delay = (ms = 400) => new Promise(r => setTimeout(r, ms + Math.random() * 
 
 let _backendOnline: boolean | null = null
 
+const MODEL_CALLS_KEY = 'astra_model_calls_v1'
+const MAX_MODEL_CALLS = 300
+
+export interface ModelCallRecord {
+  id: string
+  timestamp: string
+  endpoint: 'ask' | 'compare' | 'question_test'
+  model: string
+  prompt: string
+  output: string
+  status: 'success' | 'error'
+  latencyMs: number
+  tokensUsed: number
+  costUsd: number
+}
+
+function readModelCallHistory(): ModelCallRecord[] {
+  try {
+    const raw = localStorage.getItem(MODEL_CALLS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writeModelCallHistory(rows: ModelCallRecord[]) {
+  try {
+    localStorage.setItem(MODEL_CALLS_KEY, JSON.stringify(rows.slice(0, MAX_MODEL_CALLS)))
+  } catch {
+    // ignore quota and serialization errors
+  }
+}
+
+function logModelCall(entry: Omit<ModelCallRecord, 'id' | 'timestamp'> & { timestamp?: string }) {
+  const record: ModelCallRecord = {
+    id: `mc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: entry.timestamp || new Date().toISOString(),
+    endpoint: entry.endpoint,
+    model: entry.model || 'unknown',
+    prompt: entry.prompt || '',
+    output: entry.output || '',
+    status: entry.status,
+    latencyMs: entry.latencyMs || 0,
+    tokensUsed: entry.tokensUsed || 0,
+    costUsd: entry.costUsd || 0,
+  }
+  const current = readModelCallHistory()
+  writeModelCallHistory([record, ...current])
+}
+
+export function getModelCallHistory(): ModelCallRecord[] {
+  return readModelCallHistory()
+}
+
+function aggregateCostFromModelCalls(calls: ModelCallRecord[]): DailyCostRecord[] {
+  const daily: Record<string, DailyCostRecord> = {}
+  for (const c of calls) {
+    const date = (c.timestamp || new Date().toISOString()).slice(0, 10)
+    if (!daily[date]) {
+      daily[date] = {
+        date,
+        totalCost: 0,
+        generatorCost: 0,
+        judgeCost: 0,
+        optimizerCost: 0,
+        tokensUsed: 0,
+        requests: 0,
+      }
+    }
+    daily[date].totalCost += c.costUsd || 0
+    daily[date].generatorCost += c.costUsd || 0
+    daily[date].tokensUsed += c.tokensUsed || 0
+    daily[date].requests += 1
+  }
+  return Object.keys(daily)
+    .sort()
+    .map((k) => daily[k])
+}
+
+function mergeDailyCostHistory(primary: DailyCostRecord[], secondary: DailyCostRecord[]): DailyCostRecord[] {
+  const merged: Record<string, DailyCostRecord> = {}
+  for (const row of [...primary, ...secondary]) {
+    const base = merged[row.date] || {
+      date: row.date,
+      totalCost: 0,
+      generatorCost: 0,
+      judgeCost: 0,
+      optimizerCost: 0,
+      tokensUsed: 0,
+      requests: 0,
+    }
+    base.totalCost += row.totalCost || 0
+    base.generatorCost += row.generatorCost || 0
+    base.judgeCost += row.judgeCost || 0
+    base.optimizerCost += row.optimizerCost || 0
+    base.tokensUsed += row.tokensUsed || 0
+    base.requests += row.requests || 0
+    merged[row.date] = base
+  }
+  return Object.keys(merged)
+    .sort()
+    .map((k) => ({
+      ...merged[k],
+      totalCost: +merged[k].totalCost.toFixed(6),
+      generatorCost: +merged[k].generatorCost.toFixed(6),
+      judgeCost: +merged[k].judgeCost.toFixed(6),
+      optimizerCost: +merged[k].optimizerCost.toFixed(6),
+    }))
+}
+
 async function isBackendOnline(): Promise<boolean> {
   if (_backendOnline !== null) return _backendOnline
   try {
@@ -131,6 +243,32 @@ export async function getOptimizationResults(sessionId: string): Promise<Optimiz
   return mockOptimizationResults()
 }
 
+export async function getOptimizationProgress(sessionId: string): Promise<{
+  status: string
+  phase: string
+  iteration: number
+  totalIterations: number
+  elapsedSeconds: number
+  etaSeconds: number | null
+  lastUpdate: string
+}> {
+  if (await isBackendOnline()) {
+    try {
+      const { data } = await api.get(`/optimize/${sessionId}/progress`)
+      return data
+    } catch { /* fall through */ }
+  }
+  return {
+    status: 'running',
+    phase: 'generation',
+    iteration: 0,
+    totalIterations: 0,
+    elapsedSeconds: 0,
+    etaSeconds: null,
+    lastUpdate: new Date().toISOString(),
+  }
+}
+
 export async function stopOptimization(sessionId: string): Promise<void> {
   if (await isBackendOnline()) {
     try { await api.post(`/optimize/stop/${sessionId}`); return } catch { /* fall through */ }
@@ -141,7 +279,7 @@ export async function stopOptimization(sessionId: string): Promise<void> {
 export async function askQuestion(
   question: string,
   prompt?: string,
-  opts?: { model?: string; templateId?: string; category?: string; showRouting?: boolean }
+  opts?: { model?: string; templateId?: string; category?: string; showRouting?: boolean; useContext?: boolean }
 ): Promise<GeneratedOutput> {
   if (await isBackendOnline()) {
     try {
@@ -152,12 +290,34 @@ export async function askQuestion(
         templateId: opts?.templateId,
         category: opts?.category,
         showRouting: opts?.showRouting,
+        useContext: opts?.useContext,
+      })
+      logModelCall({
+        endpoint: 'ask',
+        model: data?.metadata?.model || opts?.model || 'unknown',
+        prompt: prompt || question,
+        output: data?.fullResponse || data?.answer || data?.explanation || '',
+        status: (data?.metadata?.status === 'error' ? 'error' : 'success'),
+        latencyMs: data?.metadata?.latency_ms || 0,
+        tokensUsed: data?.metadata?.tokens_used || 0,
+        costUsd: data?.metadata?.cost_usd || 0,
       })
       return data
     } catch { /* fall through */ }
   }
   await delay(1500)
-  return mockAskQuestion(question, prompt)
+  const mock = mockAskQuestion(question, prompt)
+  logModelCall({
+    endpoint: 'ask',
+    model: mock?.metadata?.model || opts?.model || 'mock',
+    prompt: prompt || question,
+    output: mock?.fullResponse || mock?.answer || mock?.explanation || '',
+    status: 'success',
+    latencyMs: mock?.metadata?.latency_ms || 0,
+    tokensUsed: mock?.metadata?.tokens_used || 0,
+    costUsd: mock?.metadata?.cost_usd || 0,
+  })
+  return mock
 }
 
 /* ─── Compare ─── */
@@ -165,6 +325,20 @@ export async function compareModels(prompt: string, models: string[]): Promise<C
   if (await isBackendOnline()) {
     try {
       const { data } = await api.post('/compare', { prompt, models })
+      if (Array.isArray(data?.results)) {
+        data.results.forEach((r: any) => {
+          logModelCall({
+            endpoint: 'compare',
+            model: r?.metadata?.usedModel || r?.model || 'unknown',
+            prompt,
+            output: r?.answer || r?.explanation || '',
+            status: r?.metadata?.status === 'error' ? 'error' : 'success',
+            latencyMs: r?.metadata?.latencyMs || 0,
+            tokensUsed: r?.metadata?.tokensUsed || 0,
+            costUsd: r?.metadata?.costUsd || 0,
+          })
+        })
+      }
       return data
     } catch (err: any) {
       const msg = err?.response?.data?.detail || err?.message || 'Compare request failed'
@@ -183,7 +357,7 @@ export async function compareModels(prompt: string, models: string[]): Promise<C
       }
     }
   }
-  return {
+  const offline = {
     results: models.map(model => ({
       model,
       answer: 'Error: Backend is offline. Start backend server to run real model comparison.',
@@ -196,6 +370,19 @@ export async function compareModels(prompt: string, models: string[]): Promise<C
     consistency_score: 0,
     summary: 'Backend is offline. Model comparison requires live backend responses.',
   }
+  offline.results.forEach((r) => {
+    logModelCall({
+      endpoint: 'compare',
+      model: r.model,
+      prompt,
+      output: r.answer,
+      status: 'error',
+      latencyMs: r.metadata?.latencyMs || 0,
+      tokensUsed: r.metadata?.tokensUsed || 0,
+      costUsd: r.metadata?.costUsd || 0,
+    })
+  })
+  return offline
 }
 
 /* ─── Prompt Analyzer ─── */
@@ -234,14 +421,16 @@ export async function getCostPrediction(prompt: string): Promise<CostPrediction>
 }
 
 export async function getCostHistory(): Promise<DailyCostRecord[]> {
+  const localFromCalls = aggregateCostFromModelCalls(getModelCallHistory())
   if (await isBackendOnline()) {
     try {
       const { data } = await api.get('/cost/history')
-      return data
+      const serverData = Array.isArray(data) ? data : []
+      return mergeDailyCostHistory(serverData, localFromCalls)
     } catch { /* fall through */ }
   }
   await delay()
-  return mockCostHistory()
+  return mergeDailyCostHistory(mockCostHistory(), localFromCalls)
 }
 
 /* ─── Router ─── */
@@ -357,6 +546,16 @@ export async function testQuestion(
       model: opts?.model,
       temperature: opts?.temperature ?? 0.7,
       maxTokens: opts?.maxTokens ?? 500,
+    })
+    logModelCall({
+      endpoint: 'question_test',
+      model: data?.metadata?.model || opts?.model || 'unknown',
+      prompt: data?.promptUsed || '',
+      output: data?.fullResponse || data?.answer || '',
+      status: data?.metadata?.status === 'error' ? 'error' : 'success',
+      latencyMs: data?.metadata?.latency_ms || 0,
+      tokensUsed: data?.metadata?.tokens_used || 0,
+      costUsd: data?.metadata?.cost_usd || 0,
     })
     return data
   }

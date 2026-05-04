@@ -20,26 +20,53 @@ const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }
 const podiumIcons = [Trophy, Medal, Award]
 
 export default function ComparisonPage() {
+  const LS_REPORT_KEY = 'astra_compare_last_report_v1'
+  const LS_MODELS_KEY = 'astra_compare_selected_models_v1'
+  const LS_PROMPT_KEY = 'astra_compare_prompt_v1'
   const [prompt, setPrompt] = useState('Answer the following question clearly.\n\nQuestion: {question}\n\nAnswer:')
   const [availableModels, setAvailableModels] = useState<string[]>(FALLBACK_MODELS)
   const [selectedModels, setSelectedModels] = useState<string[]>([FALLBACK_MODELS[0], FALLBACK_MODELS[1]])
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<ComparisonReport | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    try {
+      const cachedPrompt = localStorage.getItem(LS_PROMPT_KEY)
+      if (cachedPrompt) setPrompt(cachedPrompt)
+      const cachedModels = localStorage.getItem(LS_MODELS_KEY)
+      if (cachedModels) {
+        const parsed = JSON.parse(cachedModels)
+        if (Array.isArray(parsed) && parsed.length >= 2) {
+          setSelectedModels(parsed.slice(0, 5))
+        }
+      }
+      const cachedReport = localStorage.getItem(LS_REPORT_KEY)
+      if (cachedReport) {
+        const parsed = JSON.parse(cachedReport)
+        if (parsed && parsed.results) setReport(parsed)
+      }
+    } catch {
+      // ignore cache errors
+    }
+
     getModels()
       .then((models: ModelProfile[]) => {
         const backendAvailable = models
           .filter(m => m.is_available && m.status === 'available')
           .map(m => m.id)
 
-        if (backendAvailable.length >= 2) {
-          setAvailableModels(backendAvailable)
+        const merged = backendAvailable.length >= 2
+          ? Array.from(new Set([...backendAvailable, ...FALLBACK_MODELS]))
+          : FALLBACK_MODELS
+
+        if (merged.length >= 2) {
+          setAvailableModels(merged)
           setSelectedModels(prev => {
-            const valid = prev.filter(m => backendAvailable.includes(m))
+            const valid = prev.filter(m => merged.includes(m))
             const seeded = [
               ...valid,
-              ...backendAvailable.filter(m => !valid.includes(m)),
+              ...merged.filter(m => !valid.includes(m)),
             ]
             return seeded.slice(0, Math.max(2, Math.min(4, seeded.length)))
           })
@@ -49,6 +76,14 @@ export default function ComparisonPage() {
         // Keep fallback models when backend list is not available.
       })
   }, [])
+
+  useEffect(() => {
+    localStorage.setItem(LS_MODELS_KEY, JSON.stringify(selectedModels))
+  }, [selectedModels])
+
+  useEffect(() => {
+    localStorage.setItem(LS_PROMPT_KEY, prompt)
+  }, [prompt])
 
   const addModel = () => {
     const available = availableModels.filter(m => !selectedModels.includes(m))
@@ -66,9 +101,13 @@ export default function ComparisonPage() {
 
   const handleCompare = async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await compareModels(prompt, selectedModels)
       setReport(res)
+      localStorage.setItem(LS_REPORT_KEY, JSON.stringify(res))
+    } catch (err: any) {
+      setError(err?.message || 'Comparison failed. Backend may be unavailable.')
     } finally {
       setLoading(false)
     }
@@ -128,6 +167,19 @@ export default function ComparisonPage() {
             </div>
           </Card>
         </motion.div>
+
+        {/* Error Display */}
+        {error && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
+            <Card className="border-red-500/30 bg-red-500/5">
+              <div className="flex items-center gap-2">
+                <span className="text-red-400 text-sm">⚠</span>
+                <p className="text-sm text-red-400">{error}</p>
+              </div>
+              <p className="text-xs text-text-muted mt-1">The comparison will use mock data if the backend is unavailable.</p>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Results */}
         {report && (
@@ -220,6 +272,9 @@ export default function ComparisonPage() {
                       <span>Latency: {(r.metadata?.latencyMs ?? 0).toFixed(0)}ms</span>
                       <span>Tokens: {r.metadata?.tokensUsed ?? 0}</span>
                       <span>Cost: ${(r.metadata?.costUsd ?? 0).toFixed(6)}</span>
+                      {r.metadata?.usedModel && r.metadata.usedModel !== r.model && (
+                        <span>Fallback: {modelShort(r.metadata.usedModel)}</span>
+                      )}
                     </div>
                     {r.metadata?.error && (
                       <p className="text-xs text-red-400 mb-2 break-words">Reason: {r.metadata.error}</p>

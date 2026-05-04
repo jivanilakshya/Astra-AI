@@ -35,11 +35,14 @@ export default function AskQuestionPage() {
   const [showPrompt, setShowPrompt] = useState(false)
   const [showRouting, setShowRouting] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
+  const [useContext, setUseContext] = useState(true)
 
   // Template state
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('auto')
   const [autoDetectedTemplate, setAutoDetectedTemplate] = useState<string | null>(null)
+  const [autoIntent, setAutoIntent] = useState<string>('question')
+  const [autoComplexity, setAutoComplexity] = useState<string>('moderate')
 
   // Model state
   const [models, setModels] = useState<ModelProfile[]>([])
@@ -71,6 +74,8 @@ export default function AskQuestionPage() {
     try {
       const result = await autoSelectTemplate(question, category)
       setAutoDetectedTemplate(result.selectedTemplate.id)
+      setAutoIntent(result.detectedIntent || 'question')
+      setAutoComplexity(result.detectedComplexity || 'moderate')
     } catch { /* ignore */ }
   }, [question, category, selectedTemplateId])
 
@@ -109,6 +114,7 @@ export default function AskQuestionPage() {
           templateId: showPrompt ? undefined : templateId,
           category,
           showRouting: true,
+          useContext,
         }
       )
 
@@ -238,6 +244,11 @@ export default function AskQuestionPage() {
                   {TEMPLATE_ICONS[autoDetectedTemplate || selectedTemplateId] || <Sparkles size={12} />}
                   <span className="ml-1">{activeTemplateName}</span>
                 </Badge>
+                {selectedTemplateId === 'auto' && question.trim() && (
+                  <span className="text-[11px] text-text-muted">
+                    intent: {autoIntent} · complexity: {autoComplexity}
+                  </span>
+                )}
               </div>
             </Card>
 
@@ -246,6 +257,13 @@ export default function AskQuestionPage() {
               <div className="flex items-center justify-between mb-3">
                 <h2 className="section-title">Your Question</h2>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => setUseContext(!useContext)}
+                    className={`btn-ghost text-xs ${useContext ? 'text-accent' : ''}`}
+                    title="Toggle context engineering"
+                  >
+                    {useContext ? 'Context ON' : 'Context OFF'}
+                  </button>
                   <button onClick={() => setShowPrompt(!showPrompt)} className="btn-ghost text-xs">
                     {showPrompt ? <EyeOff size={12} /> : <Eye size={12} />}
                     {showPrompt ? ' Hide' : ' Edit'} Prompt
@@ -399,7 +417,24 @@ export default function AskQuestionPage() {
                     <span>{answer.metadata?.tokens_used ?? 0} tokens</span>
                     <span className="flex items-center gap-1"><Clock size={10} />{(answer.metadata?.latency_ms ?? 0).toFixed(0)}ms</span>
                     <span>In: {answer.metadata?.input_tokens ?? 0} / Out: {answer.metadata?.output_tokens ?? 0}</span>
+                    <span>Cost: ${(answer.metadata?.cost_usd ?? 0).toFixed(6)}</span>
                   </div>
+
+                  {answer.context?.related && answer.context.related.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <div className="text-xs font-mono text-text-muted uppercase mb-2">Context Engineering</div>
+                      <div className="text-xs text-text-secondary mb-2">
+                        Used {answer.context.related.length} related items from category {answer.context.category || category}.
+                      </div>
+                      <div className="space-y-1">
+                        {answer.context.related.map((item, idx) => (
+                          <div key={`${item.id || idx}`} className="text-xs text-text-secondary bg-surface-secondary rounded-card px-2 py-1">
+                            {item.question}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Developer Mode Debug Info */}
                   {isDev && answer.debug && (

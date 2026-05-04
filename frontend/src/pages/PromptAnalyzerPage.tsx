@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Loader2, FileText, AlertCircle, CheckCircle, ArrowRight } from 'lucide-react'
 import Card from '../components/ui/Card'
 import Badge from '../components/ui/Badge'
 import ScoreBar from '../components/ui/ScoreBar'
 import AnimatedNumber from '../components/ui/AnimatedNumber'
-import { analyzePrompt, getCostPrediction } from '../services/api'
+import { analyzePrompt, getCostPrediction, listTemplates } from '../services/api'
 import { scoreToColor, formatCost } from '../utils/formatters'
-import type { PromptAnalysis, CostPrediction } from '../types'
+import type { PromptAnalysis, CostPrediction, PromptTemplate } from '../types'
 
 const fadeUp = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }
 
@@ -29,6 +29,11 @@ export default function PromptAnalyzerPage() {
   const [loading, setLoading] = useState(false)
   const [analysis, setAnalysis] = useState<PromptAnalysis | null>(null)
   const [cost, setCost] = useState<CostPrediction | null>(null)
+  const [templates, setTemplates] = useState<PromptTemplate[]>([])
+
+  useEffect(() => {
+    listTemplates().then(setTemplates).catch(() => setTemplates([]))
+  }, [])
 
   const handleAnalyze = async () => {
     setLoading(true)
@@ -77,6 +82,24 @@ export default function PromptAnalyzerPage() {
                 <span>{prompt.length} chars</span>
                 <span>{prompt.split(/\s+/).length} words</span>
               </div>
+
+              {templates.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <div className="text-xs font-mono text-text-muted uppercase mb-2">Built-in Templates</div>
+                  <div className="flex flex-wrap gap-2">
+                    {templates.slice(0, 8).map(t => (
+                      <button
+                        key={t.id}
+                        onClick={() => setPrompt(t.template)}
+                        className="btn-ghost text-xs"
+                        title={t.description}
+                      >
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Card>
           </motion.div>
 
@@ -118,6 +141,11 @@ export default function PromptAnalyzerPage() {
                 <p className="text-2xl font-body font-semibold text-text-primary">
                   <AnimatedNumber value={analysis.overallScore} decimals={1} suffix="/10" />
                 </p>
+                {analysis.templateAdvice?.selected && (
+                  <p className="text-xs text-text-muted mt-2">
+                    Suggested template: <span className="text-text-primary font-mono">{analysis.templateAdvice.selected}</span>
+                  </p>
+                )}
               </Card>
             )}
           </motion.div>
@@ -154,6 +182,31 @@ export default function PromptAnalyzerPage() {
                   <div className="flex flex-wrap gap-2">
                     {analysis.flags.map((f, i) => (
                       <Badge key={i} variant="warn">{f}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {analysis.recommendedTemplates && analysis.recommendedTemplates.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-border">
+                  <h3 className="text-xs font-mono text-text-muted uppercase mb-2">Recommended Templates</h3>
+                  <div className="space-y-2">
+                    {analysis.recommendedTemplates.map((t) => (
+                      <div key={t.id} className="flex items-center justify-between p-2 rounded-button bg-surface-2">
+                        <div>
+                          <div className="text-sm text-text-primary">{t.name}</div>
+                          {t.why && <div className="text-xs text-text-muted">{t.why}</div>}
+                        </div>
+                        <button
+                          className="btn-ghost text-xs"
+                          onClick={() => {
+                            const matched = templates.find(tp => tp.id === t.id)
+                            if (matched) setPrompt(matched.template)
+                          }}
+                        >
+                          Apply
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>

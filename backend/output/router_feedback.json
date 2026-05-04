@@ -1,0 +1,102 @@
+[
+  {
+    "timestamp": "2026-05-03T18:05:09.273386",
+    "prompt_hash": "41012ee6981b",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.4,
+    "latency_seconds": 1.370985984802246,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:05:09.276136",
+    "prompt_hash": "41012ee6981b",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.4,
+    "latency_seconds": 1.370985984802246,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:05:23.589476",
+    "prompt_hash": "6be09f2fa72b",
+    "complexity": "complex",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.6,
+    "latency_seconds": 6.284494876861572,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:05:23.590972",
+    "prompt_hash": "6be09f2fa72b",
+    "complexity": "complex",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.6,
+    "latency_seconds": 6.284494876861572,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:05:29.839487",
+    "prompt_hash": "6be09f2fa72b",
+    "complexity": "complex",
+    "model_used": "Qwen/Qwen2.5-7B-Instruct",
+    "quality_score": 6.8,
+    "latency_seconds": 4.231348276138306,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:05:29.841242",
+    "prompt_hash": "6be09f2fa72b",
+    "complexity": "complex",
+    "model_used": "Qwen/Qwen2.5-7B-Instruct",
+    "quality_score": 6.8,
+    "latency_seconds": 4.231348276138306,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:05:50.569923",
+    "prompt_hash": "4f02f1a1cf1c",
+    "complexity": "complex",
+    "model_used": "Qwen/Qwen2.5-7B-Instruct",
+    "quality_score": 6.7,
+    "latency_seconds": 4.189813613891602,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:05:50.571904",
+    "prompt_hash": "4f02f1a1cf1c",
+    "complexity": "complex",
+    "model_used": "Qwen/Qwen2.5-7B-Instruct",
+    "quality_score": 6.7,
+    "latency_seconds": 4.189813613891602,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:06:08.876204",
+    "prompt_hash": "d3281f36d8ef",
+    "complexity": "simple",
+    "model_used": "Qwen/Qwen2.5-7B-Instruct",
+    "quality_score": 6.9,
+    "latency_seconds": 4.85947847366333,
+    "cost_usd": 0.0,
+    "success": true
+  },
+  {
+    "timestamp": "2026-05-03T18:06:09.319860",
+    "prompt_hash": "d3281f36d8ef",
+    "complexity": "simple",
+    "model_used": "meta-llama/Meta-Llama-3-8B-Instruct",
+    "quality_score": 6.7,
+    "latency_seconds": 5.309124946594238,
+    "cost_usd": 0.0,
+    "success": true
+  }
+]

@@ -27,11 +27,16 @@ from utils.runtime_mode import (
     get_mode_manager
 )
 
-from utils.multi_model import (
-    MultiModelEngine,
-    ComparisonReport,
-    ModelResult,
-)
+try:
+    from utils.multi_model import (
+        MultiModelEngine,
+        ComparisonReport,
+        ModelResult,
+    )
+except Exception:
+    MultiModelEngine = None
+    ComparisonReport = None
+    ModelResult = None
 
 from utils.smart_router import (
     SmartRouter,
