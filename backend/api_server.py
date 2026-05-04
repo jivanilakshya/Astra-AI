@@ -123,6 +123,34 @@ def _supported_models() -> List[Dict[str, Any]]:
         unique_models.append(model)
     return unique_models
 
+
+def _sync_model_selector_pricing(model_selector: Optional[Any]) -> None:
+    """Ensure ModelSelector has pricing for all supported models."""
+    if not model_selector:
+        return
+    try:
+        from utils.model_selector import ModelPricing
+        for model in _supported_models():
+            model_id = model.get("id")
+            if not model_id:
+                continue
+            cost_per_1m = float(model.get("costPer1MTokens") or 0.0)
+            if cost_per_1m <= 0:
+                continue
+            input_cost = cost_per_1m / 1000.0
+            output_cost = cost_per_1m / 200.0
+            context_window = int(model.get("contextWindow") or model.get("context_window") or 8192)
+            tier = int(model.get("quality_tier") or 2)
+            model_selector.model_pricing[model_id] = ModelPricing(
+                model_name=model_id,
+                input_cost_per_1k=input_cost,
+                output_cost_per_1k=output_cost,
+                context_window=context_window,
+                performance_tier=tier,
+            )
+    except Exception as e:
+        logger.warning(f"Could not sync model pricing: {e}")
+
 # ── Pydantic request / response models ──────────────────────────────────────
 
 class QuestionIn(BaseModel):
@@ -283,6 +311,7 @@ class BackendState:
                     prefer_open_source=True,
                     storage_path=str(output_dir / "cost_tracking"),
                 )
+                _sync_model_selector_pricing(self.model_selector)
             except Exception as e:
                 logger.warning(f"Model selector init failed: {e}")
 
@@ -1304,6 +1333,132 @@ def _score_comparison_response(prompt: str, response_text: str, success: bool, l
     return {"scores": scores, "compositeScore": round(composite, 1)}
 
 
+def _record_optimization_usage(session_id: str, results: Dict[str, Any]) -> float:
+    """Best-effort cost tracking for optimization runs."""
+    if not backend.model_selector or not results:
+        return 0.0
+
+    try:
+        from utils.model_selector import AgentType
+    except Exception:
+        return 0.0
+
+    config = results.get("config", {}) or {}
+    generator_model = (
+        config.get("generatorModel")
+        or config.get("model")
+        or config.get("generator_model")
+    )
+    judge_model = (
+        config.get("judgeModel")
+        or config.get("judge_model")
+        or generator_model
+    )
+    optimizer_model = (
+        config.get("optimizerModel")
+        or config.get("optimizer_model")
+        or generator_model
+    )
+    if not generator_model:
+        return 0.0
+
+    initial_prompt = (
+        results.get("initial_prompt_used")
+        or results.get("initialPrompt")
+        or results.get("initial_prompt")
+        or ""
+    )
+    iteration_logs = results.get("raw_results", {}).get("iterations", [])
+    if not iteration_logs:
+        return 0.0
+
+    total_cost = 0.0
+    judge_overhead_chars = 900
+    optimizer_overhead_chars = 700
+    for idx, log in enumerate(iteration_logs):
+        prompt_used = initial_prompt if idx == 0 else iteration_logs[idx - 1].get("prompt", initial_prompt)
+        if not prompt_used:
+            prompt_used = log.get("prompt", "")
+
+        outputs = log.get("generated_outputs", []) or []
+        evaluations = log.get("evaluations", []) or []
+        for output_idx, output in enumerate(outputs):
+            question = str(output.get("question", "") or "")
+            if "{question}" in prompt_used:
+                prompt_text = prompt_used.replace("{question}", question)
+            else:
+                prompt_text = f"{prompt_used}\n\nQuestion: {question}".strip()
+
+            answer_text = str(output.get("answer") or output.get("explanation") or "")
+            in_tok = max(1, len(prompt_text) // 4)
+            out_tok = max(1, len(answer_text) // 4)
+
+            try:
+                cost = backend.model_selector.record_usage(
+                    agent_type=AgentType.GENERATOR,
+                    model_name=generator_model,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                    metadata={
+                        "endpoint": "optimize",
+                        "session_id": session_id,
+                        "iteration": log.get("iteration", idx + 1),
+                    },
+                )
+                total_cost += float(cost or 0.0)
+            except Exception:
+                pass
+
+            if judge_model:
+                eval_result = evaluations[output_idx] if output_idx < len(evaluations) else {}
+                explanation_text = str(output.get("explanation") or answer_text or "")
+                judge_prompt = (
+                    f"Question: {question}\n"
+                    f"Answer: {answer_text}\n"
+                    f"Explanation: {explanation_text}\n"
+                )
+                judge_in = max(1, (len(judge_prompt) + judge_overhead_chars) // 4)
+                judge_out = max(1, len(json.dumps(eval_result)) // 4)
+                try:
+                    cost = backend.model_selector.record_usage(
+                        agent_type=AgentType.JUDGE,
+                        model_name=judge_model,
+                        input_tokens=judge_in,
+                        output_tokens=judge_out,
+                        metadata={
+                            "endpoint": "optimize",
+                            "session_id": session_id,
+                            "iteration": log.get("iteration", idx + 1),
+                        },
+                    )
+                    total_cost += float(cost or 0.0)
+                except Exception:
+                    pass
+
+        if optimizer_model:
+            eval_summary = json.dumps(evaluations)
+            optimizer_in = max(1, (len(prompt_used) + len(eval_summary) + optimizer_overhead_chars) // 4)
+            optimized_prompt = str(log.get("prompt") or "")
+            optimizer_out = max(1, len(optimized_prompt) // 4)
+            try:
+                cost = backend.model_selector.record_usage(
+                    agent_type=AgentType.OPTIMIZER,
+                    model_name=optimizer_model,
+                    input_tokens=optimizer_in,
+                    output_tokens=optimizer_out,
+                    metadata={
+                        "endpoint": "optimize",
+                        "session_id": session_id,
+                        "iteration": log.get("iteration", idx + 1),
+                    },
+                )
+                total_cost += float(cost or 0.0)
+            except Exception:
+                pass
+
+    return total_cost
+
+
 def _record_runtime_usage(agent: str, model_name: str, prompt: str, response_text: str, cost_usd: float, success: bool, latency_ms: float, endpoint: str):
     """Best-effort unified telemetry recording for charts and router stats."""
     try:
@@ -1553,6 +1708,10 @@ async def _run_optimization_task(session_id: str, questions: List[str], config: 
             # Attach config to results
             results["config"] = config_info
             results["initial_prompt_used"] = initial_prompt
+
+            recorded_cost = _record_optimization_usage(session_id, results)
+            if recorded_cost > 0:
+                results["total_cost"] = max(float(results.get("total_cost", 0) or 0), recorded_cost)
 
             duration = (datetime.now() - start_time).total_seconds()
 
