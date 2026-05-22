@@ -601,7 +601,35 @@
       "totalCost": 0.028436000000000003,
       "questionsCount": 1,
       "durationSeconds": 57.711674
+    },
+    {
+      "sessionId": "sess_20260522_175021",
+      "startedAt": "2026-05-22T17:50:21.124572",
+      "status": "completed",
+      "totalIterations": 5,
+      "initialScore": 5.750000000000001,
+      "finalScore": 6.300000000000001,
+      "improvement": 0.5499999999999998,
+      "converged": false,
+      "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "totalCost": 0.069323,
+      "questionsCount": 3,
+      "durationSeconds": 102.84548
+    },
+    {
+      "sessionId": "sess_20260522_175253",
+      "startedAt": "2026-05-22T17:52:53.657739",
+      "status": "completed",
+      "totalIterations": 2,
+      "initialScore": 4.933333333333334,
+      "finalScore": 8.666666666666666,
+      "improvement": 3.7333333333333325,
+      "converged": true,
+      "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "totalCost": 0.041501,
+      "questionsCount": 3,
+      "durationSeconds": 57.155557
     }
   ],
-  "updated_at": "2026-05-04T22:27:32.677953"
+  "updated_at": "2026-05-22T17:53:50.821869"
 }
