@@ -629,7 +629,77 @@
       "totalCost": 0.041501,
       "questionsCount": 3,
       "durationSeconds": 57.155557
+    },
+    {
+      "sessionId": "sess_20260522_222748",
+      "startedAt": "2026-05-22T22:27:48.222707",
+      "status": "completed",
+      "totalIterations": 3,
+      "initialScore": 0.0,
+      "finalScore": 0.0,
+      "improvement": 0.0,
+      "converged": false,
+      "model": "claude-3-sonnet",
+      "totalCost": 0.011792000000000002,
+      "questionsCount": 1,
+      "durationSeconds": 49.663683
+    },
+    {
+      "sessionId": "sess_20260522_222901",
+      "startedAt": "2026-05-22T22:29:01.238683",
+      "status": "completed",
+      "totalIterations": 1,
+      "initialScore": 8.700000000000001,
+      "finalScore": 8.700000000000001,
+      "improvement": 0.0,
+      "converged": true,
+      "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "totalCost": 0.008671,
+      "questionsCount": 1,
+      "durationSeconds": 18.528153
+    },
+    {
+      "sessionId": "sess_20260522_223047",
+      "startedAt": "2026-05-22T22:30:47.384911",
+      "status": "completed",
+      "totalIterations": 2,
+      "initialScore": 7.800000000000001,
+      "finalScore": 8.5,
+      "improvement": 0.6999999999999993,
+      "converged": true,
+      "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "totalCost": 0.015132999999999999,
+      "questionsCount": 1,
+      "durationSeconds": 32.808944
+    },
+    {
+      "sessionId": "sess_20260522_223735",
+      "startedAt": "2026-05-22T22:37:35.618096",
+      "status": "completed",
+      "totalIterations": 3,
+      "initialScore": 4.166666666666667,
+      "finalScore": 4.500000000000001,
+      "improvement": 0.3333333333333339,
+      "converged": false,
+      "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "totalCost": 0.043958000000000004,
+      "questionsCount": 3,
+      "durationSeconds": 62.32987
+    },
+    {
+      "sessionId": "sess_20260627_214638",
+      "startedAt": "2026-06-27T21:46:38.046113",
+      "status": "completed",
+      "totalIterations": 2,
+      "initialScore": 8.350000000000001,
+      "finalScore": 8.913333333333334,
+      "improvement": 0.5633333333333326,
+      "converged": true,
+      "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "totalCost": 0.042353999999999996,
+      "questionsCount": 3,
+      "durationSeconds": 32.231441
     }
   ],
-  "updated_at": "2026-05-22T17:53:50.821869"
+  "updated_at": "2026-06-27T21:47:10.295975"
 }

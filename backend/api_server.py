@@ -89,11 +89,12 @@ def _supported_models() -> List[Dict[str, Any]]:
             "cost_output_per_1k": cost / 200.0,
             "avg_latency_seconds": meta.get("avg_latency_seconds", 2.0),
             "avgLatency": int(meta.get("avg_latency_seconds", 2.0) * 1000),
-            "avgScore": None,
+            "avgScore": None,  
             "quality_tier": tier,
             "is_available": status == "available",
             "strengths": strengths,
         }
+    
 
     try:
         from agents.huggingface_provider import AVAILABLE_MODELS
